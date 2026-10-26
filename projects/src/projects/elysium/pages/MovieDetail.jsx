@@ -5,7 +5,7 @@ import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { MovieDetailSkeleton } from '../components/ElysiumSkeleton'
 import { showError } from '../../../utils/ElysiumToast'
 
-const API_URL_BACKEND = 'http://localhost:5000/api'
+const API_URL_BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 const STATUSES = [
   { value: 'not_watched', label: 'Не смотрел' },

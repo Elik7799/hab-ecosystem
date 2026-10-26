@@ -5,7 +5,7 @@ import { useSocket } from '../context/ElysiumSocketContext'
 import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
 
-const API_URL_BACKEND = 'http://localhost:5000/api'
+const API_URL_BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 const CRITERIA = [
     { value: 'common_want', label: 'Общие из «Буду смотреть»' },
