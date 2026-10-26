@@ -20,7 +20,7 @@ export function SocketProvider({ children }) {
       return
     }
 
-    const newSocket = io('http://localhost:5000', {
+    const newSocket = io('https://hab-ecosystem.onrender.com', {
       auth: { token },
       transports: ['websocket'],
     })

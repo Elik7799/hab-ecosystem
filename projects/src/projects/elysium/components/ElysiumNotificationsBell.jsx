@@ -4,7 +4,7 @@ import { Bell } from 'lucide-react'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { useSocket } from '../context/ElysiumSocketContext'
 
-const API_URL_BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 
 export default function ElysiumNotificationsBell() {
   const { token } = useAuth()

@@ -5,7 +5,7 @@ import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { MovieGridSkeleton } from '../components/ElysiumSkeleton'
 import { showError } from '../../../utils/ElysiumToast'
 
-const API_URL_BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
 
 const FILTERS = [
