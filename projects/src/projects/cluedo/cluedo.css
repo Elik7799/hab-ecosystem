@@ -1,0 +1,546 @@
+/* ===== ПЕРЕМЕННЫЕ (ТЕМНАЯ ТЕМА по умолчанию) ===== */
+:root {
+    --cl-bg: #111015;
+    --cl-panel-bg: rgba(17, 16, 21, 0.95);
+    --cl-block-bg: #1a1920;
+    --cl-table-bg: #111015;
+    --cl-header-bg: #23222b;
+    --cl-cell-bg: #1c1b23;
+    --cl-cell-hover: #2a2933;
+    --cl-text: #eaeaea;
+    --cl-text-muted: #b0b0b8;
+    --cl-accent: #ff4b4b;
+    --cl-accent-solid: #c70000;
+    --cl-border: rgba(255, 255, 255, 0.08);
+    --cl-border-strong: rgba(255, 255, 255, 0.2);
+    --cl-row-crossed: rgba(199, 0, 0, 0.15);
+    --cl-row-title: #23222b;
+    --cl-row-title-hover: #2f2e39;
+    --cl-input-bg: rgba(0, 0, 0, 0.4);
+    --cl-player-bg: #2b2247;
+    --cl-player-border: #4a3d75;
+    --cl-player-input-bg: rgba(255, 255, 255, 0.08);
+    --cl-player-text: #d9d2ff;
+}
+
+/* ===== СВЕТЛАЯ ТЕМА ===== */
+.cluedo-light {
+  --cl-bg: #f4f4f8;
+  --cl-panel-bg: rgba(244, 244, 248, 0.95);
+  --cl-block-bg: #ffffff;
+  --cl-table-bg: #eaeaf0;
+  --cl-header-bg: #e0e0e8;
+  --cl-cell-bg: #ffffff;
+  --cl-cell-hover: #e8e8f0;
+  --cl-text: #1a1a1a;
+  --cl-text-muted: #666;
+  --cl-accent: #c70000;
+  --cl-accent-solid: #c70000;
+  --cl-border: rgba(0, 0, 0, 0.1);
+  --cl-border-strong: rgba(0, 0, 0, 0.25);
+  --cl-row-crossed: rgba(199, 0, 0, 0.1);
+  --cl-row-title: #e0e0e8;
+  --cl-row-title-hover: #d4d4dc;
+  --cl-input-bg: rgba(0, 0, 0, 0.05);
+
+  --cl-player-bg: #e0e0ff;
+  --cl-player-border: #b0b0ff;
+  --cl-player-input-bg: rgba(0, 0, 0, 0.05);
+  --cl-player-text: #1a1a4a;
+}
+
+/* ===== БАЗА ===== */
+.cluedo-app {
+    min-height: 100vh;
+    background-color: var(--cl-bg);
+    color: var(--cl-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: background 0.3s, color 0.3s;
+}
+
+button {
+    font-family: inherit;
+}
+
+/* ===== ПАНЕЛЬ ===== */
+.cluedo-panel {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px 5%;
+    background: var(--cl-panel-bg);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--cl-border);
+    flex-wrap: wrap;
+}
+
+.cluedo-panel-block {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.cluedo-panel-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    color: var(--cl-text-muted);
+    font-weight: 500;
+}
+
+.cluedo-slider {
+    width: 200px;
+    accent-color: var(--cl-accent-solid);
+    cursor: pointer;
+}
+
+.cluedo-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cluedo-theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--cl-cell-bg);
+    border: 1px solid var(--cl-border);
+    color: var(--cl-text);
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.cluedo-theme-toggle:hover {
+    background: var(--cl-cell-hover);
+}
+
+.cluedo-newgame {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--cl-accent-solid);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.cluedo-newgame:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+}
+
+/* ===== ТЕЛО ===== */
+.cluedo-body {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding: 32px 5px;
+    padding-bottom: 80px;
+}
+
+.cluedo-block {
+    background: var(--cl-block-bg);
+    border-radius: 16px;
+    padding: 5px;
+    border: 1px solid var(--cl-border);
+    overflow-x: auto;
+}
+
+.cluedo-block-title {
+    margin: 0 0 16px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--cl-accent);
+    letter-spacing: 1px;
+}
+
+.cluedo-table {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: var(--cl-table-bg);
+    border-radius: 12px;
+    padding: 4px;
+}
+
+/* Сетка таблицы: первый столбец — фиксированный minmax,
+   остальные — равномерно делят место */
+.cluedo-header-row,
+.cluedo-row {
+    display: grid;
+    grid-template-columns: minmax(100px, 1.2fr) repeat(auto-fit, minmax(40px, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+}
+
+.cluedo-header-row {
+    background: var(--cl-header-bg);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.cluedo-row {
+    border-bottom: 1px solid var(--cl-border);
+    transition: background 0.2s;
+}
+
+.cluedo-row-crossed {
+    background: var(--cl-row-crossed);
+}
+
+/* ===== ЯЧЕЙКИ ===== */
+.cluedo-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 4px;
+    text-align: center;
+    box-sizing: border-box;
+    background: var(--cl-cell-bg);
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+    font-size: 14px;
+    color: var(--cl-text);
+    border: none;
+    outline: none;
+    min-height: 44px; /* Выравнивает высоту ячеек при переносе текста */
+}
+
+/* Первый столбец — теперь с переносом строки и авто-дефисом */
+.cluedo-cell-first {
+    justify-content: flex-start;
+    align-items: center;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-weight: 500;
+    text-align: left;
+    background: var(--cl-row-title);
+    white-space: normal;        /* Разрешаем перенос */
+    word-break: break-word;     /* Ломаем длинные слова, если не влезают */
+    hyphens: auto;              /* Автоматические дефисы */
+    line-height: 1.2;
+    font-size: 13px;
+}
+
+.cluedo-cell-value {
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cl-text);
+    user-select: none;
+    background: var(--cl-cell-bg);
+}
+
+.cluedo-cell-value:hover {
+    background: var(--cl-cell-hover);
+}
+
+/* Спецзначения */
+.cluedo-cell-yes {
+    background: rgba(46, 204, 113, 0.25) !important;
+    color: #2ecc71 !important;
+}
+
+.cluedo-cell-yes:hover {
+    background: rgba(46, 204, 113, 0.4) !important;
+}
+
+.cluedo-cell-no {
+    background: rgba(231, 76, 60, 0.25) !important;
+    color: #e74c3c !important;
+}
+
+.cluedo-cell-no:hover {
+    background: rgba(231, 76, 60, 0.4) !important;
+}
+
+.cluedo-cell-dot {
+    background: rgba(155, 89, 182, 0.25) !important;
+    color: #b07ad6 !important;
+}
+
+.cluedo-cell-dot:hover {
+    background: rgba(155, 89, 182, 0.4) !important;
+}
+
+/* Цифры — градиент от оранжевого к красно-бордовому */
+.cluedo-cell-num-1 {
+    background: rgba(241, 196, 15, 0.20) !important;
+    color: #f1c40f !important;
+}
+
+.cluedo-cell-num-2 {
+    background: rgba(243, 156, 18, 0.20) !important;
+    color: #f39c12 !important;
+}
+
+.cluedo-cell-num-3 {
+    background: rgba(230, 126, 34, 0.20) !important;
+    color: #e67e22 !important;
+}
+
+.cluedo-cell-num-4 {
+    background: rgba(211, 84, 0, 0.20) !important;
+    color: #d35400 !important;
+}
+
+.cluedo-cell-num-5 {
+    background: rgba(192, 57, 43, 0.20) !important;
+    color: #c0392b !important;
+}
+
+.cluedo-cell-num-6 {
+    background: rgba(169, 50, 38, 0.20) !important;
+    color: #a93226 !important;
+}
+
+.cluedo-cell-num-7 {
+    background: rgba(146, 43, 33, 0.20) !important;
+    color: #922b21 !important;
+}
+
+.cluedo-cell-num-8 {
+    background: rgba(123, 36, 28, 0.20) !important;
+    color: #7b241c !important;
+}
+
+.cluedo-cell-num-9 {
+    background: rgba(100, 30, 22, 0.20) !important;
+    color: #641e16 !important;
+}
+
+/* ===== КНОПКА СТРОКИ ===== */
+.cluedo-row-title {
+    background: var(--cl-row-title);
+    border: none;
+    color: var(--cl-text);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 500;
+    transition: background 0.15s;
+}
+
+.cluedo-row-title:hover {
+    background: var(--cl-row-title-hover);
+}
+
+.cluedo-row-crossed .cluedo-row-title {
+    color: #ff6b6b;
+    text-decoration: line-through;
+}
+
+/* ===== ИНПУТЫ ===== */
+.cluedo-name-input {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px;
+    color: var(--cl-text);
+    font-size: 13px;
+    text-align: center;
+    transition: 0.2s;
+}
+
+.cluedo-name-input:hover,
+.cluedo-name-input:focus {
+    border-color: var(--cl-border-strong);
+    outline: none;
+    background: var(--cl-input-bg);
+}
+
+/* ===== ПОПАП ===== */
+.cluedo-popup {
+    position: fixed;
+    z-index: 1000;
+    transform: translateX(-50%);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: var(--cl-header-bg);
+    padding: 10px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--cl-border-strong);
+}
+
+.cluedo-popup-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--cl-cell-bg);
+    border: 1px solid var(--cl-border);
+    border-radius: 8px;
+    color: var(--cl-text);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+.cluedo-popup-item:hover {
+    background: var(--cl-cell-hover);
+    border-color: var(--cl-border-strong);
+}
+
+.cluedo-popup-item.active {
+    background: var(--cl-accent-solid);
+    border-color: var(--cl-accent-solid);
+    color: #fff;
+}
+
+/* Специальные цвета в попапе */
+.popup-yes {
+    background: rgba(46, 204, 113, 0.2) !important;
+    color: #2ecc71 !important;
+}
+
+.popup-no {
+    background: rgba(231, 76, 60, 0.2) !important;
+    color: #e74c3c !important;
+}
+
+.popup-dot {
+    background: rgba(155, 89, 182, 0.2) !important;
+    color: #b07ad6 !important;
+}
+
+.popup-num-1 {
+    background: rgba(241, 196, 15, 0.2) !important;
+    color: #f1c40f !important;
+}
+
+.popup-num-2 {
+    background: rgba(243, 156, 18, 0.2) !important;
+    color: #f39c12 !important;
+}
+
+.popup-num-3 {
+    background: rgba(230, 126, 34, 0.2) !important;
+    color: #e67e22 !important;
+}
+
+.popup-num-4 {
+    background: rgba(211, 84, 0, 0.2) !important;
+    color: #d35400 !important;
+}
+
+.popup-num-5 {
+    background: rgba(192, 57, 43, 0.2) !important;
+    color: #c0392b !important;
+}
+
+.popup-num-6 {
+    background: rgba(169, 50, 38, 0.2) !important;
+    color: #a93226 !important;
+}
+
+.popup-num-7 {
+    background: rgba(146, 43, 33, 0.2) !important;
+    color: #922b21 !important;
+}
+
+.popup-num-8 {
+    background: rgba(123, 36, 28, 0.2) !important;
+    color: #7b241c !important;
+}
+
+.popup-num-9 {
+    background: rgba(100, 30, 22, 0.2) !important;
+    color: #641e16 !important;
+}
+
+/* ===== МОБИЛКИ ===== */
+@media (max-width: 768px) {
+    .cluedo-panel {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .cluedo-panel-block {
+        justify-content: space-between;
+    }
+
+    .cluedo-slider {
+        width: 100%;
+    }
+
+    .cluedo-header-row,
+    .cluedo-row {
+        grid-template-columns: minmax(70px, 1fr) repeat(auto-fit, minmax(30px, 1fr));
+    }
+
+    .cluedo-cell {
+        font-size: 12px;
+        padding: 6px 2px;
+        min-height: 38px;
+    }
+
+    .cluedo-cell-first {
+        padding-left: 4px;
+        padding-right: 4px;
+        font-size: 11px;
+        line-height: 1.1;
+    }
+
+    .cluedo-cell-value {
+        font-size: 14px;
+    }
+
+    .cluedo-name-input {
+        font-size: 11px;
+        padding: 2px;
+    }
+}
+
+/* Статичный текст "Я" вместо инпута */
+.cluedo-player-static {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cl-player-text);
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+@media (max-width: 768px) {
+  .cluedo-player-static {
+    font-size: 11px;
+    padding: 2px;
+  }
+}
+
+.cluedo-logo {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #4bffff, #009fc7);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 27px;
+  color: #fff;
+}

@@ -1,0 +1,110 @@
+/* ________________Header___________________ */
+@media (max-width: 768px) {
+    .header-navbar {
+        padding: 15px;
+    }
+
+    .header-logotxt {
+        font-size: 15px;
+    }
+
+    .header-div {
+        gap: 6px;
+    }
+
+    .header-button {
+        font-size: 13px;
+    }
+
+    .header-buttonlogin {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .header-navbar {
+        padding: 10px;
+    }
+
+    .header-logotxt {
+        font-size: 15px;
+    }
+
+    .header-div {
+        gap: 6px;
+    }
+
+    .header-button {
+        font-size: 11px;
+    }
+
+    .header-buttonlogin {
+        font-size: 11px;
+    }
+}
+
+/* ________________Footer___________________ */
+@media (max-width: 768px) {
+    .footer {
+        padding: 30px 10px 20px 10px;
+    }
+}
+
+/* ________________Main___________________ */
+@media (max-width: 768px) {
+    .main-moviecard {
+        width: 140px;
+        height: 285px;
+    }
+
+    .main-movieposter {
+        width: 140px;
+    }
+}
+
+@media (max-width: 480px) {
+    .main-moviecard {
+        width: 130px;
+        height: 270px;
+    }
+
+    .main-movieposter {
+        width: 130px;
+    }
+}
+
+/* ________________MovieDetail___________________ */
+@media (max-width: 768px) {
+    .moviedetail-moviecard {
+        width: 140px;
+        height: 285px;
+    }
+
+    .moviedetail-movieposter {
+        width: 140px;
+    }
+}
+
+@media (max-width: 480px) {
+    .moviedetail-moviecard {
+        width: 130px;
+        height: 270px;
+    }
+
+    .moviedetail-movieposter {
+        width: 130px;
+    }
+}
+
+/* ________________Match___________________ */
+@media (max-width: 768px) {
+    .match-poster {
+        width: 250px;
+    }
+}
+
+@media (max-width: 480px) {
+    .match-poster {
+        width: 130px;
+    }
+}
