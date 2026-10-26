@@ -3,11 +3,8 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173,
-    host: true,
-    // Это заставляет Vite отдавать index.html для любых путей, 
-    // чтобы React Router мог сам разобраться, куда вести пользователя
-    historyApiFallback: true, 
-  },
+  define: {
+    // Жестко задаем адрес API для продакшена
+    'import.meta.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'https://hab-ecosystem.onrender.com/api')
+  }
 })
