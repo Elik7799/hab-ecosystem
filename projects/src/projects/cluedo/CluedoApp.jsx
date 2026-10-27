@@ -10,7 +10,7 @@ const ROOMS = [
   'Кухня', 'Библиотека', 'Гостинная', 'Кабинет',
 ]
 
-const STATUSES = ['', '✓', '✕', '•', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+const STATUSES = ['', '✓', '✕', '•', '?', '??', '???', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 export default function CluedoApp() {
   const [theme, setTheme] = useState('dark')
@@ -96,6 +96,9 @@ export default function CluedoApp() {
     if (value === '✓') cls += ' cluedo-cell-yes'
     else if (value === '✕') cls += ' cluedo-cell-no'
     else if (value === '•') cls += ' cluedo-cell-dot'
+    else if (value === '?') cls += ' cluedo-cell-Q1'
+    else if (value === '??') cls += ' cluedo-cell-Q2'
+    else if (value === '???') cls += ' cluedo-cell-Q3'
     else if (/^[1-9]$/.test(value)) cls += ` cluedo-cell-num-${value}`
     return cls
   }

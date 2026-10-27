@@ -1,3 +1,18 @@
+@media (max-width: 768px) {
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    input[type="number"],
+    textarea,
+    select {
+        font-size: max(16px, 1em);
+    }
+}
+
 /* ===== ПЕРЕМЕННЫЕ (ТЕМНАЯ ТЕМА по умолчанию) ===== */
 :root {
     --cl-bg: #111015;
@@ -25,28 +40,28 @@
 
 /* ===== СВЕТЛАЯ ТЕМА ===== */
 .cluedo-light {
-  --cl-bg: #f4f4f8;
-  --cl-panel-bg: rgba(244, 244, 248, 0.95);
-  --cl-block-bg: #ffffff;
-  --cl-table-bg: #eaeaf0;
-  --cl-header-bg: #e0e0e8;
-  --cl-cell-bg: #ffffff;
-  --cl-cell-hover: #e8e8f0;
-  --cl-text: #1a1a1a;
-  --cl-text-muted: #666;
-  --cl-accent: #c70000;
-  --cl-accent-solid: #c70000;
-  --cl-border: rgba(0, 0, 0, 0.1);
-  --cl-border-strong: rgba(0, 0, 0, 0.25);
-  --cl-row-crossed: rgba(199, 0, 0, 0.1);
-  --cl-row-title: #e0e0e8;
-  --cl-row-title-hover: #d4d4dc;
-  --cl-input-bg: rgba(0, 0, 0, 0.05);
+    --cl-bg: #f4f4f8;
+    --cl-panel-bg: rgba(244, 244, 248, 0.95);
+    --cl-block-bg: #ffffff;
+    --cl-table-bg: #eaeaf0;
+    --cl-header-bg: #e0e0e8;
+    --cl-cell-bg: #ffffff;
+    --cl-cell-hover: #e8e8f0;
+    --cl-text: #1a1a1a;
+    --cl-text-muted: #666;
+    --cl-accent: #c70000;
+    --cl-accent-solid: #c70000;
+    --cl-border: rgba(0, 0, 0, 0.1);
+    --cl-border-strong: rgba(0, 0, 0, 0.25);
+    --cl-row-crossed: rgba(199, 0, 0, 0.1);
+    --cl-row-title: #e0e0e8;
+    --cl-row-title-hover: #d4d4dc;
+    --cl-input-bg: rgba(0, 0, 0, 0.05);
 
-  --cl-player-bg: #e0e0ff;
-  --cl-player-border: #b0b0ff;
-  --cl-player-input-bg: rgba(0, 0, 0, 0.05);
-  --cl-player-text: #1a1a4a;
+    --cl-player-bg: #e0e0ff;
+    --cl-player-border: #b0b0ff;
+    --cl-player-input-bg: rgba(0, 0, 0, 0.05);
+    --cl-player-text: #1a1a4a;
 }
 
 /* ===== БАЗА ===== */
@@ -218,7 +233,8 @@ button {
     color: var(--cl-text);
     border: none;
     outline: none;
-    min-height: 44px; /* Выравнивает высоту ячеек при переносе текста */
+    min-height: 44px;
+    /* Выравнивает высоту ячеек при переносе текста */
 }
 
 /* Первый столбец — теперь с переносом строки и авто-дефисом */
@@ -230,9 +246,12 @@ button {
     font-weight: 500;
     text-align: left;
     background: var(--cl-row-title);
-    white-space: normal;        /* Разрешаем перенос */
-    word-break: break-word;     /* Ломаем длинные слова, если не влезают */
-    hyphens: auto;              /* Автоматические дефисы */
+    white-space: normal;
+    /* Разрешаем перенос */
+    word-break: break-word;
+    /* Ломаем длинные слова, если не влезают */
+    hyphens: auto;
+    /* Автоматические дефисы */
     line-height: 1.2;
     font-size: 13px;
 }
@@ -276,6 +295,33 @@ button {
 
 .cluedo-cell-dot:hover {
     background: rgba(155, 89, 182, 0.4) !important;
+}
+
+.cluedo-cell-Q1 {
+    background: rgba(89, 95, 182, 0.25) !important;
+    color: #7b7ad6 !important;
+}
+
+.cluedo-cell-Q1:hover {
+    background: rgba(89, 95, 182, 0.4) !important;
+}
+
+.cluedo-cell-Q2 {
+    background: rgba(51, 60, 182, 0.25) !important;
+    color: #4b49d6 !important;
+}
+
+.cluedo-cell-Q2:hover {
+    background: rgba(51, 60, 182, 0.4) !important;
+}
+
+.cluedo-cell-Q3 {
+    background: rgba(17, 28, 184, 0.25) !important;
+    color: #1d1ad8 !important;
+}
+
+.cluedo-cell-Q3:hover {
+    background: rgba(17, 28, 184, 0.4) !important;
 }
 
 /* Цифры — градиент от оранжевого к красно-бордовому */
@@ -513,34 +559,34 @@ button {
 
 /* Статичный текст "Я" вместо инпута */
 .cluedo-player-static {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 4px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--cl-player-text);
-  text-align: center;
-  letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cl-player-text);
+    text-align: center;
+    letter-spacing: 0.5px;
 }
 
 @media (max-width: 768px) {
-  .cluedo-player-static {
-    font-size: 11px;
-    padding: 2px;
-  }
+    .cluedo-player-static {
+        font-size: 11px;
+        padding: 2px;
+    }
 }
 
 .cluedo-logo {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #4bffff, #009fc7);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 27px;
-  color: #fff;
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #4bffff, #009fc7);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 27px;
+    color: #fff;
 }
