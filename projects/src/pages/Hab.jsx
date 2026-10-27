@@ -19,7 +19,16 @@ const projects = [
     path: '/cluedo',
     disabled: false,
   },
-  
+
+  {
+    id: 'buckshot',
+    title: 'Buckshot Roulette',
+    description: 'Помощник для подсчета патронов. Следи за холостыми и боевыми.',
+    icon: '🔫',
+    path: '/buckshot',
+    disabled: false,
+  },
+
   {
     id: 'soon',
     title: 'Скоро',

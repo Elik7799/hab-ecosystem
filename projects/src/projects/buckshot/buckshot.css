@@ -1,0 +1,427 @@
+@media (max-width: 768px) {
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    input[type="number"],
+    textarea,
+    select {
+        font-size: max(16px, 1em);
+    }
+}
+
+.buckshot-app {
+    min-height: 100vh;
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.buckshot-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.buckshot-header h1 {
+    color: #ff3333;
+    font-size: 32px;
+    margin: 0 0 8px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(255, 51, 51, 0.5);
+}
+
+.buckshot-header p {
+    color: #888;
+    margin: 0;
+    font-size: 16px;
+}
+
+.buckshot-main {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+/* --- ЭКРАН НАСТРОЙКИ --- */
+.buckshot-setup {
+    background: #2a2a2a;
+    padding: 32px;
+    border-radius: 16px;
+    border: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.setup-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.setup-label {
+    font-size: 18px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.live-label {
+    color: #ff3333;
+}
+
+.blank-label {
+    color: #3399ff;
+}
+
+.setup-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.setup-controls button {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #3a3a3a;
+    border: 2px solid #555;
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.setup-controls button:hover {
+    background: #444;
+    border-color: #777;
+}
+
+.setup-value {
+    font-size: 48px;
+    font-weight: bold;
+    width: 60px;
+    text-align: center;
+    color: white;
+}
+
+.buckshot-start-btn {
+    margin-top: 12px;
+    padding: 16px;
+    background: #ff3333;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.buckshot-start-btn:hover:not(:disabled) {
+    background: #ff5555;
+    transform: translateY(-2px);
+}
+
+.buckshot-start-btn:disabled {
+    background: #444;
+    color: #777;
+    cursor: not-allowed;
+}
+
+/* --- СТАТИСТИКА --- */
+.buckshot-stats {
+    display: flex;
+    gap: 16px;
+}
+
+.stat-box {
+    flex: 1;
+    background: #2a2a2a;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #444;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.stat-box.live-stat {
+    border-bottom: 4px solid #ff3333;
+}
+
+.stat-box.blank-stat {
+    border-bottom: 4px solid #3399ff;
+}
+
+.stat-title {
+    font-size: 14px;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-value {
+    font-size: 36px;
+    font-weight: bold;
+}
+
+.live-stat .stat-value {
+    color: #ff3333;
+}
+
+.blank-stat .stat-value {
+    color: #3399ff;
+}
+
+/* --- ЛЕНТА ПАТРОНОВ --- */
+.buckshot-track {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 20px 0;
+}
+
+.buckshot-shell {
+    position: relative;
+    width: 70px;
+    height: 110px;
+    background: #2a2a2a;
+    border-radius: 12px;
+    border: 2px solid #444;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.buckshot-shell:hover:not(.fired) {
+    border-color: #666;
+    transform: translateY(-2px);
+}
+
+.buckshot-shell.current {
+    border-color: #fff;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.buckshot-shell.fired {
+    opacity: 0.3;
+    cursor: default;
+    filter: grayscale(1);
+}
+
+.buckshot-shell-inner {
+    width: 44px;
+    height: 60px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    transition: all 0.3s;
+}
+
+.buckshot-shell.live .buckshot-shell-inner {
+    background: rgba(255, 51, 51, 0.2);
+    box-shadow: inset 0 0 15px rgba(255, 51, 51, 0.5);
+}
+
+.buckshot-shell.live .buckshot-icon {
+    color: #ff3333;
+}
+
+.buckshot-shell.blank .buckshot-shell-inner {
+    background: rgba(51, 153, 255, 0.2);
+    box-shadow: inset 0 0 15px rgba(51, 153, 255, 0.5);
+}
+
+.buckshot-shell.blank .buckshot-icon {
+    color: #3399ff;
+}
+
+.buckshot-shell.unknown .buckshot-shell-inner {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.buckshot-shell.unknown .buckshot-icon {
+    color: #666;
+}
+
+.buckshot-icon {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.buckshot-index {
+    position: absolute;
+    bottom: 8px;
+    font-size: 12px;
+    color: #888;
+    font-weight: bold;
+}
+
+/* --- КНОПКИ И ЛЕГЕНДА --- */
+.buckshot-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.buckshot-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.buckshot-action-btn.shoot {
+    background: #ff3333;
+    color: white;
+    flex: 1;
+    justify-content: center;
+    max-width: 300px;
+}
+
+.buckshot-action-btn.shoot:hover:not(:disabled) {
+    background: #ff5555;
+}
+
+.buckshot-action-btn.shoot:disabled {
+    background: #444;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.buckshot-action-btn.reset {
+    background: #3a3a3a;
+    color: #ccc;
+}
+
+.buckshot-action-btn.reset:hover {
+    background: #4a4a4a;
+}
+
+.buckshot-legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #888;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+}
+
+.legend-color.live {
+    background: #ff3333;
+}
+
+.legend-color.blank {
+    background: #3399ff;
+}
+
+/* Адаптив */
+@media (max-width: 600px) {
+    .buckshot-shell {
+        width: 50px;
+        height: 80px;
+    }
+
+    .buckshot-shell-inner {
+        width: 32px;
+        height: 44px;
+    }
+
+    .buckshot-icon {
+        font-size: 18px;
+    }
+
+    .stat-value {
+        font-size: 24px;
+    }
+}
+
+.buckshot-probs {
+    display: flex;
+    height: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #333;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.prob-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    transition: width 0.4s ease-out;
+}
+
+.live-bar {
+    background: #ff3333;
+}
+
+.blank-bar {
+    background: #3399ff;
+}
+
+.live-bar.full {
+    box-shadow: 0 0 10px #ff3333;
+}
+
+.blank-bar.full {
+    box-shadow: 0 0 10px #3399ff;
+}
+
+.buckshot-prob-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #aaa;
+    margin-top: 8px;
+    padding: 0 4px;
+}
