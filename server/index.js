@@ -269,6 +269,33 @@ app.post('/api/login', async (req, res) => {
 
 // ───────────────────────── MOVIES (статусы) ─────────────────────────
 
+app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
+  const { movieIds } = req.body
+  const userId = req.user.id
+
+  if (!movieIds || !Array.isArray(movieIds) || movieIds.length === 0) {
+    return res.json({ statuses: {} })
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT movie_id, status FROM user_movies WHERE user_id = $1 AND movie_id = ANY($2)',
+      [userId, movieIds]
+    )
+
+    // Превращаем массив [{movie_id, status}] в объект { movie_id: status }
+    const statuses = {}
+    result.rows.forEach((row) => {
+      statuses[row.movie_id] = row.status
+    })
+
+    res.json({ statuses })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка получения статусов' })
+  }
+})
+
 app.get('/api/movies/:movieId', authMiddleware, async (req, res) => {
   const { movieId } = req.params
   const userId = req.user.id
@@ -324,33 +351,6 @@ app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка сохранения статуса' })
-  }
-})
-
-app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
-  const { movieIds } = req.body
-  const userId = req.user.id
-
-  if (!movieIds || !Array.isArray(movieIds) || movieIds.length === 0) {
-    return res.json({ statuses: {} })
-  }
-
-  try {
-    const result = await pool.query(
-      'SELECT movie_id, status FROM user_movies WHERE user_id = $1 AND movie_id = ANY($2)',
-      [userId, movieIds]
-    )
-
-    // Превращаем массив [{movie_id, status}] в объект { movie_id: status }
-    const statuses = {}
-    result.rows.forEach((row) => {
-      statuses[row.movie_id] = row.status
-    })
-
-    res.json({ statuses })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Ошибка получения статусов' })
   }
 })
 
