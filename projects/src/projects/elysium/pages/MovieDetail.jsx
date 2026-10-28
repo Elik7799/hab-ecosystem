@@ -134,7 +134,7 @@ export default function ElysiumMovieDetail() {
           .filter(Boolean)
 
         if (allIds.length > 0) {
-          fetch(`${API_URL_BACKEND}/movies/statuses`, {
+          fetch(`${API_URL_BACKEND}/movies/bulk-statuses`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

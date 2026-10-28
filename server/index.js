@@ -327,7 +327,7 @@ app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
   }
 })
 
-app.post('/api/movies/statuses', authMiddleware, async (req, res) => {
+app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
   const { movieIds } = req.body
   const userId = req.user.id
 
