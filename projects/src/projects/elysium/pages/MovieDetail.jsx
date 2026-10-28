@@ -50,17 +50,16 @@ export default function ElysiumMovieDetail() {
 
     setLoading(true)
     setError('')
+    setMovie(null) // Сбрасываем фильм при переходе на новый
 
     const authHeaders = {
       Authorization: `Bearer ${token}`,
     }
 
-    // ... все твои существующие fetch-запросы ...
-
     const fetchMovie = fetch(`${API_URL_BACKEND}/kinopoisk/${id}`, {
       headers: authHeaders,
     }).then((res) => {
-      if (!res.ok) throw new Error('Ошибка загрузки')
+      if (!res.ok) throw new Error('Ошибка загрузки фильма')
       return res.json()
     })
 
@@ -90,6 +89,7 @@ export default function ElysiumMovieDetail() {
       .then((res) => (res.ok ? res.json() : { status: 'not_watched' }))
       .catch(() => ({ status: 'not_watched' }))
 
+    // Ждем загрузки основных данных (без запроса статусов для похожих)
     Promise.all([
       fetchMovie,
       fetchFacts,
@@ -128,7 +128,7 @@ export default function ElysiumMovieDetail() {
         setRelations(related)
         setSimilars(sortByYear(uniqueSimilars))
 
-        // НОВОЕ: Запрашиваем статусы для всех связанных и похожих фильмов
+        // Отдельно (в фоне) запрашиваем статусы для карточек
         const allIds = [...related, ...uniqueSimilars]
           .map((m) => m.kinopoiskId || m.filmId)
           .filter(Boolean)
@@ -144,7 +144,7 @@ export default function ElysiumMovieDetail() {
           })
             .then((res) => (res.ok ? res.json() : { statuses: {} }))
             .then((statusesData) => setRelatedStatuses(statusesData.statuses || {}))
-            .catch((err) => console.error('Ошибка загрузки статусов:', err))
+            .catch((err) => console.warn('Не удалось загрузить статусы для карточек:', err))
         }
       })
       .catch((err) => {
