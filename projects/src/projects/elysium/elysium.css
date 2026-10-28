@@ -536,11 +536,13 @@ body {
   width: 200px;
   height: 370px;
   text-decoration: none;
+  border-color: rgba(255, 7, 7, 0.2);
 }
 
 .main-moviecard:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 20px rgba(199, 0, 0, 0.15);
+  border-color: rgba(199, 0, 0, 0.5);
 }
 
 .main-movieposter {
@@ -615,17 +617,9 @@ body {
   color: #888;
 }
 
-/* --- Статусы карточек на главной --- */
-.main-moviecard {
-  transition: all 0.2s ease-in-out;
-  border: 2px solid transparent;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
 /* Бледно-желтый (буду смотреть) */
 .main-moviecard.status-want_to_watch {
-  background-color: rgba(255, 193, 7, 0.05);
+  background-color: rgba(199, 152, 0, 0.24);
   border-color: rgba(255, 193, 7, 0.2);
 }
 .main-moviecard.status-want_to_watch:hover {
@@ -635,7 +629,7 @@ body {
 
 /* Бледно-зеленый (посмотрел) */
 .main-moviecard.status-watched {
-  background-color: rgba(46, 204, 113, 0.05);
+  background-color: rgba(7, 199, 0, 0.24);
   border-color: rgba(46, 204, 113, 0.2);
 }
 .main-moviecard.status-watched:hover {
