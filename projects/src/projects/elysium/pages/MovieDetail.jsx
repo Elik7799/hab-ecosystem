@@ -41,8 +41,6 @@ export default function ElysiumMovieDetail() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState('not_watched')
   const [factsExpanded, setFactsExpanded] = useState(false)
-
-  // НОВОЕ: Храним статусы для связанных и похожих фильмов
   const [relatedStatuses, setRelatedStatuses] = useState({})
 
   useEffect(() => {
@@ -50,7 +48,7 @@ export default function ElysiumMovieDetail() {
 
     setLoading(true)
     setError('')
-    setMovie(null) // Сбрасываем фильм при переходе на новый
+    setMovie(null)
 
     const authHeaders = {
       Authorization: `Bearer ${token}`,
@@ -89,7 +87,6 @@ export default function ElysiumMovieDetail() {
       .then((res) => (res.ok ? res.json() : { status: 'not_watched' }))
       .catch(() => ({ status: 'not_watched' }))
 
-    // Ждем загрузки основных данных (без запроса статусов для похожих)
     Promise.all([
       fetchMovie,
       fetchFacts,
@@ -98,6 +95,10 @@ export default function ElysiumMovieDetail() {
       fetchStatus,
     ])
       .then(([movieData, factsData, relationsData, similarsData, statusData]) => {
+        if (!movieData || !movieData.kinopoiskId) {
+          throw new Error('Фильм не найден')
+        }
+
         setMovie(movieData)
         setFacts(factsData.items || [])
         setStatus(statusData.status)
@@ -106,19 +107,19 @@ export default function ElysiumMovieDetail() {
         const allSimilars = similarsData.items || []
 
         const related = sortByYear(
-          allRelations.filter((item) =>
-            RELATED_TYPES.includes(item.relationType)
+          allRelations.filter(
+            (item) => item && RELATED_TYPES.includes(item.relationType)
           )
         )
 
         const similarsFromRelations = allRelations.filter(
-          (item) => item.relationType === 'SIMILAR'
+          (item) => item && item.relationType === 'SIMILAR'
         )
 
         const combinedSimilars = [...similarsFromRelations, ...allSimilars]
         const uniqueSimilars = Array.from(
           new Map(
-            combinedSimilars.map((item) => [
+            combinedSimilars.filter(Boolean).map((item) => [
               item.kinopoiskId || item.filmId,
               item,
             ])
@@ -128,9 +129,8 @@ export default function ElysiumMovieDetail() {
         setRelations(related)
         setSimilars(sortByYear(uniqueSimilars))
 
-        // Отдельно (в фоне) запрашиваем статусы для карточек
         const allIds = [...related, ...uniqueSimilars]
-          .map((m) => m.kinopoiskId || m.filmId)
+          .map((m) => m && (m.kinopoiskId || m.filmId))
           .filter(Boolean)
 
         if (allIds.length > 0) {
@@ -144,55 +144,101 @@ export default function ElysiumMovieDetail() {
           })
             .then((res) => (res.ok ? res.json() : { statuses: {} }))
             .then((statusesData) => setRelatedStatuses(statusesData.statuses || {}))
-            .catch((err) => console.warn('Не удалось загрузить статусы для карточек:', err))
+            .catch((err) => console.warn('Не удалось загрузить статусы:', err))
         }
       })
       .catch((err) => {
+        console.error(err)
         setError('Не удалось загрузить информацию о фильме.')
         showError('Ошибка загрузки фильма')
-        console.error(err)
       })
       .finally(() => setLoading(false))
   }, [id, token])
 
-  // ... handleStatusChange и остальной код без изменений ...
+  const handleStatusChange = async (newStatus) => {
+    if (!token) return
+
+    const previousStatus = status
+    setStatus(newStatus)
+
+    try {
+      const res = await fetch(`${API_URL_BACKEND}/movies/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (!res.ok) {
+        setStatus(previousStatus)
+        showError('Не удалось сохранить статус')
+        console.error('Не удалось сохранить статус')
+      }
+    } catch (err) {
+      setStatus(previousStatus)
+      showError('Не удалось сохранить статус')
+      console.error(err)
+    }
+  }
+
+  // ЗАЩИТА ОТ БЕЛОГО ЭКРАНА
+  if (loading) {
+    return <MovieDetailSkeleton />
+  }
+
+  if (error || !movie) {
+    return (
+      <div className="moviedetail-error">
+        <p>{error || 'Фильм не найден'}</p>
+        <Link to="/elysium" className="loginbutton">
+          Вернуться на главную
+        </Link>
+      </div>
+    )
+  }
+
+  const genres = movie.genres?.map((g) => g.genre).join(', ') || '—'
+  const countries = movie.countries?.map((c) => c.country).join(', ') || '—'
+
+  const visibleFacts = factsExpanded ? facts : facts.slice(0, 3)
 
   const renderMovieCard = (item, idField) => {
+    if (!item) return null
     const movieId = item[idField]
     if (!movieId) return null
 
-    // НОВОЕ: Получаем статус из объекта relatedStatuses
     const itemStatus = relatedStatuses[movieId] || 'not_watched'
 
     return (
       <Link
         key={movieId}
         to={`/elysium/movie/${movieId}`}
-        // НОВОЕ: Добавляем класс статуса
         className={`moviedetail-moviecard moviedetail-moviecardhorizontal status-${itemStatus}`}
       >
         <img
-          src={item.posterUrlPreview || item.posterUrl}
-          alt={getMovieName(item)}
+          src={item.posterUrlPreview || item.posterUrl || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
+          alt={getMovieName(item) || 'Без названия'}
           className="moviedetail-movieposter"
           loading="lazy"
+          onError={(e) => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
         />
         <div className="moviedetail-movieinfo">
-          <p className="moviedetail-moviename">{getMovieName(item)}</p>
+          <p className="moviedetail-moviename">{getMovieName(item) || 'Без названия'}</p>
         </div>
       </Link>
     )
   }
-
-  // ... остальной return ...
 
   return (
     <div className="moviedetail">
       <div className="moviedetail-top">
         <div className="moviedetail-poster">
           <img
-            src={movie.posterUrl || movie.posterUrlPreview}
-            alt={getMovieName(movie)}
+            src={movie.posterUrl || movie.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
+            alt={getMovieName(movie) || 'Без названия'}
+            onError={(e) => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
           />
         </div>
 
