@@ -615,6 +615,34 @@ body {
   color: #888;
 }
 
+/* --- Статусы карточек на главной --- */
+.main-moviecard {
+  transition: all 0.2s ease-in-out;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Бледно-желтый (буду смотреть) */
+.main-moviecard.status-want_to_watch {
+  background-color: rgba(255, 193, 7, 0.05);
+  border-color: rgba(255, 193, 7, 0.2);
+}
+.main-moviecard.status-want_to_watch:hover {
+  border-color: rgba(255, 193, 7, 0.5);
+  box-shadow: 0 4px 15px rgba(255, 193, 7, 0.15);
+}
+
+/* Бледно-зеленый (посмотрел) */
+.main-moviecard.status-watched {
+  background-color: rgba(46, 204, 113, 0.05);
+  border-color: rgba(46, 204, 113, 0.2);
+}
+.main-moviecard.status-watched:hover {
+  border-color: rgba(46, 204, 113, 0.5);
+  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.15);
+}
+
 /* ________________MovieDetail_______________ */
 .moviedetail-moviecard {
   background-color: rgba(199, 0, 0, 0.24);

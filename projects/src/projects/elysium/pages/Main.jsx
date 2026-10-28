@@ -197,7 +197,7 @@ export default function ElysiumMain() {
               <Link
                 key={movie.kinopoiskId || movie.filmId}
                 to={`/elysium/movie/${movie.kinopoiskId || movie.filmId}`}
-                className="main-moviecard"
+                className={`main-moviecard status-${movie.status || 'not_watched'}`} // <-- Добавили класс
               >
                 <img
                   src={movie.posterUrlPreview}

@@ -1409,6 +1409,7 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
   const page = parseInt(req.query.page) || 1
   const limit = parseInt(req.query.limit) || 20
   const offset = (page - 1) * limit
+  const userId = req.user.id // Получаем ID текущего пользователя
 
   try {
     const countResult = await pool.query('SELECT COUNT(*) FROM main_movies')
@@ -1428,12 +1429,14 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
         m.rating_imdb AS "ratingImdb",
         m.description,
         m.film_length AS "filmLength",
-        m.slogan
+        m.slogan,
+        COALESCE(um.status, 'not_watched') AS status
        FROM main_movies mm
        JOIN movies m ON m.id = mm.movie_id
+       LEFT JOIN user_movies um ON um.movie_id = m.kinopoisk_id AND um.user_id = $3
        ORDER BY mm.position ASC
        LIMIT $1 OFFSET $2`,
-      [limit, offset]
+      [limit, offset, userId]
     )
 
     res.json({
