@@ -42,6 +42,9 @@ export default function ElysiumMovieDetail() {
   const [status, setStatus] = useState('not_watched')
   const [factsExpanded, setFactsExpanded] = useState(false)
 
+  // НОВОЕ: Храним статусы для связанных и похожих фильмов
+  const [relatedStatuses, setRelatedStatuses] = useState({})
+
   useEffect(() => {
     if (!id || !token) return
 
@@ -51,6 +54,8 @@ export default function ElysiumMovieDetail() {
     const authHeaders = {
       Authorization: `Bearer ${token}`,
     }
+
+    // ... все твои существующие fetch-запросы ...
 
     const fetchMovie = fetch(`${API_URL_BACKEND}/kinopoisk/${id}`, {
       headers: authHeaders,
@@ -122,6 +127,25 @@ export default function ElysiumMovieDetail() {
 
         setRelations(related)
         setSimilars(sortByYear(uniqueSimilars))
+
+        // НОВОЕ: Запрашиваем статусы для всех связанных и похожих фильмов
+        const allIds = [...related, ...uniqueSimilars]
+          .map((m) => m.kinopoiskId || m.filmId)
+          .filter(Boolean)
+
+        if (allIds.length > 0) {
+          fetch(`${API_URL_BACKEND}/movies/statuses`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ movieIds: allIds }),
+          })
+            .then((res) => (res.ok ? res.json() : { statuses: {} }))
+            .then((statusesData) => setRelatedStatuses(statusesData.statuses || {}))
+            .catch((err) => console.error('Ошибка загрузки статусов:', err))
+        }
       })
       .catch((err) => {
         setError('Не удалось загрузить информацию о фильме.')
@@ -131,63 +155,21 @@ export default function ElysiumMovieDetail() {
       .finally(() => setLoading(false))
   }, [id, token])
 
-  const handleStatusChange = async (newStatus) => {
-    if (!token) return
-
-    const previousStatus = status
-    setStatus(newStatus)
-
-    try {
-      const res = await fetch(`${API_URL_BACKEND}/movies/${id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      })
-
-      if (!res.ok) {
-        setStatus(previousStatus)
-        showError('Не удалось сохранить статус')
-        console.error('Не удалось сохранить статус')
-      }
-    } catch (err) {
-      setStatus(previousStatus)
-      showError('Не удалось сохранить статус')
-      console.error(err)
-    }
-  }
-
-  if (loading) {
-    return <MovieDetailSkeleton />
-  }
-
-  if (error || !movie) {
-    return (
-      <div className="moviedetail-error">
-        <p>{error || 'Фильм не найден'}</p>
-        <Link to="/elysium" className="loginbutton">
-          Вернуться на главную
-        </Link>
-      </div>
-    )
-  }
-
-  const genres = movie.genres?.map((g) => g.genre).join(', ') || '—'
-  const countries = movie.countries?.map((c) => c.country).join(', ') || '—'
-
-  const visibleFacts = factsExpanded ? facts : facts.slice(0, 3)
+  // ... handleStatusChange и остальной код без изменений ...
 
   const renderMovieCard = (item, idField) => {
     const movieId = item[idField]
     if (!movieId) return null
 
+    // НОВОЕ: Получаем статус из объекта relatedStatuses
+    const itemStatus = relatedStatuses[movieId] || 'not_watched'
+
     return (
       <Link
         key={movieId}
         to={`/elysium/movie/${movieId}`}
-        className="moviedetail-moviecard moviedetail-moviecardhorizontal"
+        // НОВОЕ: Добавляем класс статуса
+        className={`moviedetail-moviecard moviedetail-moviecardhorizontal status-${itemStatus}`}
       >
         <img
           src={item.posterUrlPreview || item.posterUrl}
@@ -201,6 +183,8 @@ export default function ElysiumMovieDetail() {
       </Link>
     )
   }
+
+  // ... остальной return ...
 
   return (
     <div className="moviedetail">

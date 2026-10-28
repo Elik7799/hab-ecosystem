@@ -82,9 +82,8 @@ export default function ElysiumProfile() {
     const fetchMovies = async () => {
       setMoviesLoading(true)
       try {
-        const url = `${API_URL_BACKEND}/users/${profileId}/movies${
-          filter !== 'all' ? `?status=${filter}` : ''
-        }`
+        const url = `${API_URL_BACKEND}/users/${profileId}/movies${filter !== 'all' ? `?status=${filter}` : ''
+          }`
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -384,7 +383,7 @@ export default function ElysiumProfile() {
               <Link
                 key={movie.kinopoiskId}
                 to={`/elysium/movie/${movie.kinopoiskId}`}
-                className="profile-moviecard"
+                className={`profile-moviecard status-${movie.my_status || 'not_watched'}`}
               >
                 <img
                   src={movie.posterUrlPreview}

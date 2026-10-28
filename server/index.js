@@ -327,6 +327,33 @@ app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
   }
 })
 
+app.post('/api/movies/statuses', authMiddleware, async (req, res) => {
+  const { movieIds } = req.body
+  const userId = req.user.id
+
+  if (!movieIds || !Array.isArray(movieIds) || movieIds.length === 0) {
+    return res.json({ statuses: {} })
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT movie_id, status FROM user_movies WHERE user_id = $1 AND movie_id = ANY($2)',
+      [userId, movieIds]
+    )
+
+    // Превращаем массив [{movie_id, status}] в объект { movie_id: status }
+    const statuses = {}
+    result.rows.forEach((row) => {
+      statuses[row.movie_id] = row.status
+    })
+
+    res.json({ statuses })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка получения статусов' })
+  }
+})
+
 // ───────────────────────── FRIENDS ─────────────────────────
 
 app.get('/api/users/search', authMiddleware, async (req, res) => {
@@ -664,10 +691,12 @@ app.get('/api/users/:id', authMiddleware, async (req, res) => {
 })
 
 app.get('/api/users/:id/movies', authMiddleware, async (req, res) => {
-  const { id } = req.params
-  const { status } = req.query
+  const { id } = req.params // ID пользователя, чей профиль смотрим
+  const currentUserId = req.user.id // ID того, кто смотрит
+  const { status } = req.query // Фильтр по статусу (если выбран)
 
   try {
+    // Формируем базовый запрос
     let query = `
       SELECT 
         mv.kinopoisk_id AS "kinopoiskId",
@@ -676,19 +705,22 @@ app.get('/api/users/:id/movies', authMiddleware, async (req, res) => {
         mv.name_original AS "nameOriginal",
         mv.year,
         mv.poster_url_preview AS "posterUrlPreview",
-        um.status
-      FROM user_movies um
-      LEFT JOIN movies mv ON mv.kinopoisk_id = um.movie_id
-      WHERE um.user_id = $1
+        um_owner.status AS status, -- Статус владельца профиля (для фильтра)
+        um_me.status AS my_status  -- ТВОЙ статус (для цвета)
+      FROM user_movies um_owner
+      LEFT JOIN movies mv ON mv.kinopoisk_id = um_owner.movie_id
+      LEFT JOIN user_movies um_me ON um_me.movie_id = um_owner.movie_id AND um_me.user_id = $2
+      WHERE um_owner.user_id = $1
     `
-    const params = [id]
+    const params = [id, currentUserId]
 
+    // Если выбран фильтр по статусу (например, "Посмотрел"), фильтруем по статусу ВЛАДЕЛЬЦА
     if (status && status !== 'all') {
-      query += ' AND um.status = $2'
+      query += ' AND um_owner.status = $3'
       params.push(status)
     }
 
-    query += ' ORDER BY um.id DESC'
+    query += ' ORDER BY um_owner.id DESC'
 
     const result = await pool.query(query, params)
     res.json({ movies: result.rows })
@@ -2101,7 +2133,7 @@ async function updateOldMovies() {
   await cleanupOldNotifications()
 }
 
-setTimeout(updateOldMovies, 10000)
+// setTimeout(updateOldMovies, 10000)
 setInterval(updateOldMovies, UPDATE_INTERVAL)
 
 httpServer.listen(process.env.PORT, () => {
