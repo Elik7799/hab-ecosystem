@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import './hab.css'
+import { useTheme } from '../context/ThemeContext'
+import { Sun, Moon } from 'lucide-react'
 
 const projects = [
   {
@@ -41,6 +43,7 @@ const projects = [
 
 function Hab() {
   const navigate = useNavigate()
+  const { theme, toggleTheme } = useTheme()
 
   return (
     <div className="hab">
@@ -50,6 +53,14 @@ function Hab() {
           <h1>HAB</h1>
         </div>
         <p className="hab-subtitle">Экосистема ваших проектов</p>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title="Сменить тему"
+        >
+          {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
       </header>
 
       <main className="hab-grid">

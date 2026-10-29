@@ -1,7 +1,7 @@
 /* Базовые настройки контейнера */
 .hab {
   min-height: 100vh;
-  background-color: #0d0d12;
+  background-color: var(--leader);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 40px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--dop);
 }
 
 .hab-brand {
@@ -43,6 +43,7 @@
   margin: 0;
   font-weight: 700;
   letter-spacing: 1px;
+  color: var(--dop);
 }
 
 .hab-subtitle {
@@ -62,8 +63,8 @@
 
 /* Карточка проекта */
 .hab-card {
-  background: #16161c;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--middle);
+  border: 1px solid var(--dop);
   border-radius: 20px;
   padding: 30px;
   display: flex;
@@ -110,7 +111,7 @@
 .hab-card__content h2 {
   margin: 0 0 10px;
   font-size: 22px;
-  color: #fff;
+  color: var(--dop);
   font-weight: 600;
 }
 
@@ -126,7 +127,7 @@
   bottom: 30px;
   right: 30px;
   font-size: 24px;
-  color: #fff;
+  color: var(--dop);
   opacity: 0;
   transform: translateX(-10px);
   transition: all 0.3s ease;
@@ -160,7 +161,7 @@
   text-align: center;
   color: #4a4a52;
   font-size: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--dop);
 }
 
 /* Адаптив под мобилки */

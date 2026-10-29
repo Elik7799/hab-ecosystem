@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { RotateCcw, Users, Sun, Moon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import './cluedo.css'
+import { useTheme } from '../../context/ThemeContext'
 
 const SUSPECTS = ['Грин', 'Мастард', 'Оркид', 'Пикок', 'Плам', 'Скарлет']
-const WEAPONS = ['Подсвечник', 'Кинжал', 'Свинцовая труба', 'Револьвер', 'Статуя', 'Яд']
+const WEAPONS = ['Подсвечник', 'Кинжал', 'Труба', 'Револьвер', 'Статуя', 'Яд']
 const ROOMS = [
   'Бальный зал', 'Бильярдная', 'Зимний сад', 'Столовая', 'Холл',
   'Кухня', 'Библиотека', 'Гостинная', 'Кабинет',
@@ -13,7 +14,7 @@ const ROOMS = [
 const STATUSES = ['', '✓', '✕', '•', '?', '??', '???', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 export default function CluedoApp() {
-  const [theme, setTheme] = useState('dark')
+  const { theme, toggleTheme } = useTheme()
   const [playersCount, setPlayersCount] = useState(2)
 
   // Имена для ОСТАЛЬНЫХ игроков (без "Я")
@@ -82,7 +83,15 @@ export default function CluedoApp() {
 
   const handleRowClick = (blockId, rowName) => {
     const key = `${blockId}-${rowName}`
-    setCrossedRows((prev) => ({ ...prev, [key]: !prev[key] }))
+    setCrossedRows((prev) => {
+      const current = prev[key] || 'default'
+      let next = 'default'
+
+      if (current === 'default') next = 'crossed'
+      else if (current === 'crossed') next = 'outlined'
+
+      return { ...prev, [key]: next }
+    })
   }
 
   const handleNewGame = () => {
@@ -126,7 +135,7 @@ export default function CluedoApp() {
                 className="cluedo-name-input"
                 value={name}
                 onChange={(e) => handleNameChange(i, e.target.value)}
-                placeholder={`Игрок ${i + 2}`}
+                placeholder={`Игр.${i + 2}`}
               />
             </div>
           ))}
@@ -134,11 +143,13 @@ export default function CluedoApp() {
 
         {rows.map((row) => {
           const rowKey = `${blockId}-${row}`
-          const isCrossed = crossedRows[rowKey]
+          const rowState = crossedRows[rowKey] || 'default'
           return (
             <div
               key={row}
-              className={`cluedo-row ${isCrossed ? 'cluedo-row-crossed' : ''}`}
+              className={`cluedo-row ${rowState === 'crossed' ? 'cluedo-row-crossed' : ''
+                } ${rowState === 'outlined' ? 'cluedo-row-outlined' : ''
+                }`}
             >
               <button
                 type="button"
@@ -185,12 +196,12 @@ export default function CluedoApp() {
       <div className="cluedo-panel">
         <div className="cluedo-panel-actions">
           <Link to="/">
-            <div className="cluedo-logo">H</div>
+            <div className="hab-logo">H</div>
           </Link>
           <button
             type="button"
-            className="cluedo-theme-toggle"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="theme-toggle"
+            onClick={toggleTheme}
             title="Сменить тему"
           >
             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
@@ -237,8 +248,13 @@ export default function CluedoApp() {
               key={status || 'empty'}
               type="button"
               className={`cluedo-popup-item ${popup.currentValue === status ? 'active' : ''
-                } ${status === '✓' ? 'popup-yes' : ''} ${status === '✕' ? 'popup-no' : ''
-                } ${status === '•' ? 'popup-dot' : ''} ${/^[1-9]$/.test(status) ? `popup-num-${status}` : ''
+                } ${status === '✓' ? 'popup-yes' : ''
+                } ${status === '✕' ? 'popup-no' : ''
+                } ${status === '•' ? 'popup-dot' : ''
+                } ${status === '?' ? 'popup-Q1' : ''
+                } ${status === '??' ? 'popup-Q2' : ''
+                } ${status === '???' ? 'popup-Q3' : ''
+                } ${/^[1-9]$/.test(status) ? `popup-num-${status}` : ''
                 }`}
               onClick={() => handleSelectValue(status)}
             >

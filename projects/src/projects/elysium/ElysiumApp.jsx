@@ -22,7 +22,6 @@ function ElysiumApp() {
           <Route path="login" element={<ElysiumLogin />} />
           <Route path="register" element={<ElysiumRegister />} />
           
-          {/* ИСПРАВЛЕНО: path="/" заменен на index */}
           <Route
             index
             element={
@@ -72,6 +71,7 @@ function ElysiumApp() {
               </ElysiumProtectedRoute>
             }
           />
+          
         </Routes>
       </main>
       <ElysiumFooter />

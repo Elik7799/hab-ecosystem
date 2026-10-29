@@ -150,7 +150,7 @@ export default function ElysiumMain() {
   return (
     <div className="main-body">
       <h1 className="main-title">
-        {isSearching ? 'Результаты поиска' : 'Мои фильмы'}
+        {isSearching ? 'Результаты поиска' : 'Киновселенная MARVEL'}
       </h1>
 
       <div className="main-searchbox">

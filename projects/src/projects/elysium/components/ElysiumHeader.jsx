@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { House, Users, Sparkles, User, LogOut, Menu, X } from 'lucide-react'
+import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon } from 'lucide-react'
 import { useAuth } from '../context/ElysiumAuthContext'
 import ElysiumNotificationsBell from './ElysiumNotificationsBell'
+import { useTheme } from '../../../context/ThemeContext'
+
 
 export default function ElysiumHeader() {
+  const { theme, toggleTheme } = useTheme()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -35,11 +38,19 @@ export default function ElysiumHeader() {
     <nav className="header-navbar" ref={menuRef}>
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <Link to="/">
-          <div className="elysium-hab-logo">H</div>
+          <div className="hab-logo">H</div>
         </Link>
         <Link to="/elysium" className="header-logo">
           <span className="header-logotxt">Elysium</span>
         </Link>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title="Сменить тему"
+        >
+          {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
       </div>
 
       <div className="header-div header-div-desktop">

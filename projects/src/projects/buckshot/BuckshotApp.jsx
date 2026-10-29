@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { Target, Settings2 } from 'lucide-react'
+import { Target, Settings2, Sun, Moon } from 'lucide-react'
 import './buckshot.css'
+import { useTheme } from '../../context/ThemeContext'
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 
 export default function BuckshotApp() {
+    const { theme, toggleTheme } = useTheme()
     const [isSetup, setIsSetup] = useState(true)
     const [liveCount, setLiveCount] = useState(2)
     const [blankCount, setBlankCount] = useState(2)
@@ -114,7 +117,20 @@ export default function BuckshotApp() {
         return (
             <div className="buckshot-app">
                 <header className="buckshot-header">
-                    <h1>Buckshot Helper</h1>
+                    <div className='buckshot-header-block'>
+                        <Link to="/">
+                            <div className="hab-logo">H</div>
+                        </Link>
+                        <h1>Buckshot Helper</h1>
+                        <button
+                            type="button"
+                            className="theme-toggle"
+                            onClick={toggleTheme}
+                            title="Сменить тему"
+                        >
+                            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                        </button>
+                    </div>
                     <p>Настройка раунда</p>
                 </header>
 
@@ -142,7 +158,7 @@ export default function BuckshotApp() {
                         onClick={startGame}
                         disabled={liveCount + blankCount === 0 || liveCount + blankCount > 8}
                     >
-                        Начать ({liveCount + blankCount} патронов)
+                        Начать ({liveCount + blankCount} патр.)
                     </button>
                 </div>
             </div>
@@ -152,7 +168,20 @@ export default function BuckshotApp() {
     return (
         <div className="buckshot-app">
             <header className="buckshot-header">
-                <h1>Buckshot Helper</h1>
+                <div className='buckshot-header-block'>
+                    <Link to="/">
+                        <div className="hab-logo">H</div>
+                    </Link>
+                    <h1>Buckshot Helper</h1>
+                    <button
+                        type="button"
+                        className="theme-toggle"
+                        onClick={toggleTheme}
+                        title="Сменить тему"
+                    >
+                        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                    </button>
+                </div>
                 <p>В стволе осталось: {shells.length - currentIndex} патронов</p>
             </header>
 
