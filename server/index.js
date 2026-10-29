@@ -753,6 +753,8 @@ app.get('/api/users/:id/common', authMiddleware, async (req, res) => {
        JOIN user_movies u2 ON u2.movie_id = u1.movie_id AND u2.user_id = $2
        LEFT JOIN movies mv ON mv.kinopoisk_id = u1.movie_id
        WHERE u1.user_id = $1
+         AND u1.status = 'want_to_watch'
+         AND u2.status = 'want_to_watch'
        ORDER BY mv.year DESC`,
       [currentUserId, id]
     )
@@ -763,7 +765,6 @@ app.get('/api/users/:id/common', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Ошибка загрузки общих фильмов' })
   }
 })
-
 // ───────────────────────── MATCH ─────────────────────────
 
 app.post('/api/match/rooms', authMiddleware, async (req, res) => {
