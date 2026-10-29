@@ -84,11 +84,6 @@ button {
     transition: 0.2s;
 }
 
-.cluedo-newgame:hover {
-    filter: brightness(1.15);
-    transform: translateY(-1px);
-}
-
 /* ===== ТЕЛО ===== */
 .cluedo-body {
     display: flex;
@@ -221,18 +216,10 @@ button {
     background: var(--middle);
 }
 
-.cluedo-cell-value:hover {
-    background: var(--dop);
-}
-
 /* Спецзначения */
 .cluedo-cell-yes {
     background: rgba(46, 204, 113, 0.25) !important;
     color: #2ecc71 !important;
-}
-
-.cluedo-cell-yes:hover {
-    background: rgba(46, 204, 113, 0.4) !important;
 }
 
 .cluedo-cell-no {
@@ -240,17 +227,9 @@ button {
     color: #e74c3c !important;
 }
 
-.cluedo-cell-no:hover {
-    background: rgba(231, 76, 60, 0.4) !important;
-}
-
 .cluedo-cell-dot {
     background: rgba(155, 89, 182, 0.25) !important;
     color: #b07ad6 !important;
-}
-
-.cluedo-cell-dot:hover {
-    background: rgba(155, 89, 182, 0.4) !important;
 }
 
 .cluedo-cell-Q1 {
@@ -258,26 +237,14 @@ button {
     color: #7b7ad6 !important;
 }
 
-.cluedo-cell-Q1:hover {
-    background: rgba(89, 95, 182, 0.4) !important;
-}
-
 .cluedo-cell-Q2 {
     background: rgba(51, 60, 182, 0.25) !important;
     color: #4b49d6 !important;
 }
 
-.cluedo-cell-Q2:hover {
-    background: rgba(51, 60, 182, 0.4) !important;
-}
-
 .cluedo-cell-Q3 {
     background: rgba(17, 28, 184, 0.25) !important;
     color: #1d1ad8 !important;
-}
-
-.cluedo-cell-Q3:hover {
-    background: rgba(17, 28, 184, 0.4) !important;
 }
 
 /* Цифры — градиент от оранжевого к красно-бордовому */
@@ -337,11 +304,6 @@ button {
     transition: background 0.15s;
 }
 
-.cluedo-row-title:hover {
-    background: var(--dop);
-    color: var(--leader);
-}
-
 /* ===== ИНПУТЫ ===== */
 .cluedo-name-input {
     width: 100%;
@@ -353,11 +315,6 @@ button {
     font-size: 13px;
     text-align: center;
     transition: 0.2s;
-}
-
-.cluedo-name-input:hover,
-.cluedo-name-input:focus {
-    border-color: var(--dop);
 }
 
 /* ===== ПОПАП ===== */

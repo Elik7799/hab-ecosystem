@@ -84,7 +84,6 @@ body {
 }
 
 .header-button:hover {
-  background-color: rgba(199, 0, 0, 0.1);
   transform: translateY(-1px);
 }
 
@@ -133,11 +132,6 @@ body {
   color: rgb(199, 0, 0);
 }
 
-.header-button[title="Выйти"]:hover {
-  background-color: rgba(199, 0, 0, 0.1);
-  color: rgb(170, 0, 0);
-}
-
 /* ________________ Адаптивный хедер ________________ */
 
 /* По умолчанию: десктоп видим, мобилка скрыта */
@@ -160,10 +154,6 @@ body {
   cursor: pointer;
   border-radius: 8px;
   transition: background 0.2s;
-}
-
-.header-burger:hover {
-  background: rgba(199, 0, 0, 0.1);
 }
 
 .header-mobile-dropdown {
@@ -208,10 +198,6 @@ body {
   transition: background 0.15s;
   text-align: left;
   width: 100%;
-}
-
-.header-mobile-item:hover {
-  background: rgba(199, 0, 0, 0.06);
 }
 
 .header-mobile-item-active {
@@ -292,7 +278,6 @@ body {
 }
 
 .footer-link:hover {
-  color: rgb(199, 0, 0);
   transform: translateX(3px);
 }
 
@@ -377,10 +362,6 @@ body {
   border-radius: 10px;
   cursor: pointer;
   transition: background-color 0.2s, transform 0.1s;
-}
-
-.login-button:hover {
-  background-color: rgb(170, 0, 0);
 }
 
 .login-button:active {
@@ -469,7 +450,6 @@ body {
 }
 
 .main-searchclear:hover {
-  background: rgba(199, 0, 0, 0.2);
   transform: translateY(-5px) scale(1.1);
 }
 
@@ -494,7 +474,6 @@ body {
 }
 
 .main-filterbtn:hover {
-  background-color: rgba(199, 0, 0, 0.08);
   transform: translateY(-5px) scale(1.1);
 }
 
@@ -586,11 +565,6 @@ body {
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
-}
-
-.main-loadmore-btn:hover:not(:disabled) {
-  background-color: rgb(199, 0, 0);
-  color: var(--middle);
 }
 
 .main-loadmore-btn:active:not(:disabled) {
@@ -876,10 +850,6 @@ body {
   transition: all 0.2s;
 }
 
-.moviedetail-toggle:hover {
-  background: rgba(199, 0, 0, 0.08);
-}
-
 .moviedetail-moviesscroll {
   display: flex;
   gap: 15px;
@@ -902,10 +872,6 @@ body {
 .moviedetail-moviesscroll::-webkit-scrollbar-thumb {
   background: rgba(199, 0, 0, 0.4);
   border-radius: 4px;
-}
-
-.moviedetail-moviesscroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(199, 0, 0, 0.6);
 }
 
 /* --- Статусы карточек в деталях фильма --- */
@@ -1014,10 +980,6 @@ body {
   white-space: nowrap;
 }
 
-.friends-searchbtn:hover {
-  background-color: rgb(170, 0, 0);
-}
-
 .friends-searchbtn:active {
   transform: scale(0.98);
 }
@@ -1084,11 +1046,6 @@ body {
   border-color: rgb(199, 0, 0);
 }
 
-.friends-actionprimary:hover {
-  background: rgb(170, 0, 0);
-  border-color: rgb(170, 0, 0);
-}
-
 .friends-actionsecondary {
   padding: 6px 10px;
   font-size: 14px;
@@ -1103,11 +1060,6 @@ body {
   border-color: #ccc;
 }
 
-.friends-actionsecondary:hover {
-  background: #f5f5f5;
-  border-color: #999;
-}
-
 .friends-actiondanger {
   padding: 6px 10px;
   font-size: 14px;
@@ -1120,10 +1072,6 @@ body {
   background: var(--middle);
   color: rgb(199, 0, 0);
   border-color: rgb(199, 0, 0);
-}
-
-.friends-actiondanger:hover {
-  background: rgba(199, 0, 0, 0.08);
 }
 
 .friends-empty {
@@ -1144,7 +1092,6 @@ body {
 }
 
 .friends-name-link:hover {
-  color: rgb(199, 0, 0);
   text-decoration: underline;
 }
 
@@ -1254,10 +1201,6 @@ body {
   white-space: nowrap;
 }
 
-.match-friend:hover {
-  background: rgba(199, 0, 0, 0.08);
-}
-
 .match-friend-active {
   background: rgb(199, 0, 0);
   color: white;
@@ -1283,10 +1226,6 @@ body {
   transition: all 0.2s;
   font-size: 14px;
   color: var(--dop);
-}
-
-.match-criterion:hover {
-  border-color: rgba(199, 0, 0, 0.4);
 }
 
 .match-criterion-active {
@@ -1323,10 +1262,6 @@ body {
   transition: background 0.2s, transform 0.1s;
   align-self: center;
   min-width: 220px;
-}
-
-.match-submit:hover:not(:disabled) {
-  background: rgb(170, 0, 0);
 }
 
 .match-submit:active:not(:disabled) {
@@ -1485,12 +1420,6 @@ body {
   transition: all 0.2s;
 }
 
-.match-cancel:hover {
-  color: rgb(199, 0, 0);
-  border-color: rgb(199, 0, 0);
-  background: rgba(199, 0, 0, 0.05);
-}
-
 .match-cancel:active {
   transform: scale(0.98);
 }
@@ -1602,8 +1531,6 @@ body {
 }
 
 .match-vote-no:hover {
-  color: rgb(199, 0, 0);
-  border-color: rgb(199, 0, 0);
   box-shadow: 0 4px 16px rgba(199, 0, 0, 0.2);
 }
 
@@ -1615,7 +1542,6 @@ body {
 }
 
 .match-vote-yes:hover {
-  background: rgb(170, 0, 0);
   box-shadow: 0 6px 20px rgba(199, 0, 0, 0.45);
 }
 
@@ -1870,19 +1796,11 @@ body {
   transition: background 0.2s;
 }
 
-.profile-btn:hover {
-  background: rgb(170, 0, 0);
-}
-
 .profile-btn-secondary {
   background: var(--leader);
   color: rgb(199, 0, 0);
   border: 2px solid rgb(199, 0, 0);
   margin-top: 20px;
-}
-
-.profile-btn-secondary:hover {
-  background: rgba(199, 0, 0, 0.05);
 }
 
 .profile-common {
@@ -1932,10 +1850,6 @@ body {
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-}
-
-.profile-filterbtn:hover {
-  background: rgba(199, 0, 0, 0.08);
 }
 
 .profile-filterbtn.active {
@@ -2042,11 +1956,6 @@ body {
   border-color: rgb(199, 0, 0);
 }
 
-.profile-action-primary:hover:not(:disabled) {
-  background: rgb(170, 0, 0);
-  border-color: rgb(170, 0, 0);
-}
-
 .profile-action-secondary {
   background: var(--middle);
   color: #666;
@@ -2057,10 +1966,6 @@ body {
   background: var(--middle);
   color: rgb(199, 0, 0);
   border-color: rgb(199, 0, 0);
-}
-
-.profile-action-danger:hover:not(:disabled) {
-  background: rgba(199, 0, 0, 0.08);
 }
 
 /* --- Статусы карточек в деталях фильма --- */
@@ -2170,16 +2075,8 @@ body {
   transition: background 0.15s;
 }
 
-.notif-item:hover {
-  background: var(--leader);
-}
-
 .notif-item-unread {
   background: rgba(199, 0, 0, 0.04);
-}
-
-.notif-item-unread:hover {
-  background: rgba(199, 0, 0, 0.08);
 }
 
 .notif-message {

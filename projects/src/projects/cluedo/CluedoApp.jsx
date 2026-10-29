@@ -122,12 +122,10 @@ export default function CluedoApp() {
         <div className="cluedo-header-row">
           <div className="cluedo-cell cluedo-cell-header cluedo-cell-first">Игрок</div>
 
-          {/* Первый столбец — "Я" (не редактируемый) */}
           <div className="cluedo-cell cluedo-cell-header cluedo-cell-player">
             <span className="cluedo-player-static">Я</span>
           </div>
 
-          {/* Остальные игроки — редактируемые */}
           {otherPlayers.map((name, i) => (
             <div key={i} className="cluedo-cell cluedo-cell-header cluedo-cell-player">
               <input

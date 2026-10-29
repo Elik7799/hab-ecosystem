@@ -117,12 +117,6 @@
     justify-content: center;
 }
 
-.setup-controls button:hover {
-    background: var(--leader);
-    border-color: var(--dop);
-    color: var(--dop);
-}
-
 .setup-value {
     font-size: 48px;
     font-weight: bold;
@@ -142,11 +136,6 @@
     font-weight: bold;
     cursor: pointer;
     transition: 0.2s;
-}
-
-.buckshot-start-btn:hover:not(:disabled) {
-    background: #ff5555;
-    transform: translateY(-2px);
 }
 
 .buckshot-start-btn:disabled {
@@ -223,11 +212,6 @@
     cursor: pointer;
     transition: all 0.2s;
     user-select: none;
-}
-
-.buckshot-shell:hover:not(.fired) {
-    border:2px solid #666;
-    transform: translateY(-2px);
 }
 
 .buckshot-shell.current {
@@ -320,10 +304,6 @@
     max-width: 300px;
 }
 
-.buckshot-action-btn.shoot:hover:not(:disabled) {
-    background: #ff5555;
-}
-
 .buckshot-action-btn.shoot:disabled {
     background: var(--middle);
     color: var(--dop);
@@ -333,10 +313,6 @@
 .buckshot-action-btn.reset {
     background: var(--middle);
     color: var(--dop);
-}
-
-.buckshot-action-btn.reset:hover {
-    background: #4a4a4a;
 }
 
 .buckshot-legend {
