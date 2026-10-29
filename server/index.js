@@ -2134,7 +2134,7 @@ async function updateOldMovies() {
   await cleanupOldNotifications()
 }
 
-// setTimeout(updateOldMovies, 10000)
+setTimeout(updateOldMovies, 10000)
 setInterval(updateOldMovies, UPDATE_INTERVAL)
 
 httpServer.listen(process.env.PORT, () => {
