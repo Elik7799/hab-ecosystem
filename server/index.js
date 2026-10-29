@@ -1869,6 +1869,53 @@ const UPDATE_INTERVAL = 24 * 60 * 60 * 1000
 const UPDATE_BATCH_SIZE = 50
 const UPDATE_DELAY_MS = 300
 
+// Поля, которые обновляем из API → колонки в БД
+const FIELD_MAP = {
+  name_ru: 'nameRu',
+  name_en: 'nameEn',
+  name_original: 'nameOriginal',
+  year: 'year',
+  type: 'type',
+  poster_url: 'posterUrl',
+  poster_url_preview: 'posterUrlPreview',
+  rating_kinopoisk: 'ratingKinopoisk',
+  rating_imdb: 'ratingImdb',
+  description: 'description',
+  film_length: 'filmLength',
+  slogan: 'slogan',
+}
+
+// Числовые поля — сравниваем как числа, даже если из PG пришла строка
+const NUMERIC_FIELDS = new Set([
+  'year',
+  'rating_kinopoisk',
+  'rating_imdb',
+  'film_length',
+])
+
+function normalizeForCompare(value, field) {
+  if (value === null || value === undefined) return null
+
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed === '' || trimmed === 'null') return null
+
+    // Для числовых полей и для строк, которые целиком являются числом
+    if (NUMERIC_FIELDS.has(field) || /^-?\d+(\.\d+)?$/.test(trimmed)) {
+      const asNum = Number(trimmed)
+      if (!Number.isNaN(asNum)) return asNum
+    }
+
+    return trimmed
+  }
+
+  return value
+}
+
 async function updateOneMovie(kinopoiskId) {
   const currentResult = await pool.query(
     `SELECT 
@@ -1895,36 +1942,25 @@ async function updateOneMovie(kinopoiskId) {
 
   const fresh = await res.json()
 
+  // ── 1. Сравнение скалярных полей ──────────────────────────────────
   const changed = []
+  const updateValues = {} // field → новое значение (для динамического SET)
 
-  const fields = {
-    name_ru: fresh.nameRu,
-    name_en: fresh.nameEn,
-    name_original: fresh.nameOriginal,
-    year: fresh.year,
-    type: fresh.type,
-    poster_url: fresh.posterUrl,
-    poster_url_preview: fresh.posterUrlPreview,
-    rating_kinopoisk: fresh.ratingKinopoisk,
-    rating_imdb: fresh.ratingImdb,
-    description: fresh.description,
-    film_length: fresh.filmLength,
-    slogan: fresh.slogan,
-  }
+  for (const [dbField, apiField] of Object.entries(FIELD_MAP)) {
+    const oldNorm = normalizeForCompare(current[dbField], dbField)
+    const newRaw = fresh[apiField]
+    const newNorm = normalizeForCompare(newRaw, dbField)
 
-  for (const [key, newValue] of Object.entries(fields)) {
-    const oldValue = current[key]
-    const oldNorm = oldValue === null || oldValue === undefined ? null : oldValue
-    const newNorm = newValue === null || newValue === undefined ? null : newValue
+    if (oldNorm === newNorm) continue
 
-    if (typeof newNorm === 'number' && typeof oldNorm === 'number' && newNorm === oldNorm) continue
-    if (typeof newNorm === 'string' && typeof oldNorm === 'string' && newNorm.trim() === oldNorm.trim()) continue
+    // Политика: если API вернул null/пусто — не затираем существующее значение
     if (newNorm === null && oldNorm !== null) continue
-    if (oldNorm !== newNorm) {
-      changed.push({ field: key, old: oldNorm, new: newNorm })
-    }
+
+    changed.push({ field: dbField, old: oldNorm, new: newNorm })
+    updateValues[dbField] = newRaw ?? null
   }
 
+  // ── 2. Жанры ──────────────────────────────────────────────────────
   const currentGenresResult = await pool.query(
     'SELECT genre FROM movie_genres WHERE movie_id = $1 ORDER BY genre',
     [kinopoiskId]
@@ -1948,6 +1984,7 @@ async function updateOneMovie(kinopoiskId) {
     })
   }
 
+  // ── 3. Страны ─────────────────────────────────────────────────────
   const currentCountriesResult = await pool.query(
     'SELECT country FROM movie_countries WHERE movie_id = $1 ORDER BY country',
     [kinopoiskId]
@@ -1971,67 +2008,52 @@ async function updateOneMovie(kinopoiskId) {
     })
   }
 
-  if (changed.length > 0) {
+  // ── 4. UPDATE только изменённых полей ─────────────────────────────
+  const setClauses = []
+  const values = [kinopoiskId]
+  let paramIdx = 2
+
+  for (const { field } of changed) {
+    if (!(field in updateValues)) continue
+    setClauses.push(`${field} = $${paramIdx}`)
+    values.push(updateValues[field])
+    paramIdx++
+  }
+
+  if (setClauses.length > 0) {
+    setClauses.push('updated_at = NOW()')
     await pool.query(
-      `UPDATE movies SET
-        name_ru = COALESCE($2, name_ru),
-        name_en = COALESCE($3, name_en),
-        name_original = COALESCE($4, name_original),
-        year = COALESCE($5, year),
-        type = COALESCE($6, type),
-        poster_url = COALESCE($7, poster_url),
-        poster_url_preview = COALESCE($8, poster_url_preview),
-        rating_kinopoisk = COALESCE($9, rating_kinopoisk),
-        rating_imdb = COALESCE($10, rating_imdb),
-        description = COALESCE($11, description),
-        film_length = COALESCE($12, film_length),
-        slogan = COALESCE($13, slogan),
-        updated_at = NOW()
-       WHERE kinopoisk_id = $1`,
-      [
-        kinopoiskId,
-        fresh.nameRu || null,
-        fresh.nameEn || null,
-        fresh.nameOriginal || null,
-        fresh.year || null,
-        fresh.type || null,
-        fresh.posterUrl || null,
-        fresh.posterUrlPreview || null,
-        fresh.ratingKinopoisk || null,
-        fresh.ratingImdb || null,
-        fresh.description || null,
-        fresh.filmLength || null,
-        fresh.slogan || null,
-      ]
-    )
-  } else {
-    await pool.query(
-      `UPDATE movies SET updated_at = NOW() WHERE kinopoisk_id = $1`,
-      [kinopoiskId]
+      `UPDATE movies SET ${setClauses.join(', ')} WHERE kinopoisk_id = $1`,
+      values
     )
   }
 
+  // ── 5. Жанры / страны — батч-вставка ──────────────────────────────
   if (genresChanged && freshGenres.length > 0) {
     await pool.query('DELETE FROM movie_genres WHERE movie_id = $1', [kinopoiskId])
-    for (const genre of freshGenres) {
-      await pool.query(
-        `INSERT INTO movie_genres (movie_id, genre) VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
-        [kinopoiskId, genre]
-      )
-    }
+    await pool.query(
+      `INSERT INTO movie_genres (movie_id, genre)
+       SELECT $1, unnest($2::text[])
+       ON CONFLICT DO NOTHING`,
+      [kinopoiskId, freshGenres]
+    )
   }
 
   if (countriesChanged && freshCountries.length > 0) {
     await pool.query('DELETE FROM movie_countries WHERE movie_id = $1', [kinopoiskId])
-    for (const country of freshCountries) {
-      await pool.query(
-        `INSERT INTO movie_countries (movie_id, country) VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
-        [kinopoiskId, country]
-      )
-    }
+    await pool.query(
+      `INSERT INTO movie_countries (movie_id, country)
+       SELECT $1, unnest($2::text[])
+       ON CONFLICT DO NOTHING`,
+      [kinopoiskId, freshCountries]
+    )
   }
+
+  // ── 6. Отмечаем проверку (всегда) ─────────────────────────────────
+  await pool.query(
+    `UPDATE movies SET last_checked_at = NOW() WHERE kinopoisk_id = $1`,
+    [kinopoiskId]
+  )
 
   return { changed, error: null }
 }
@@ -2057,7 +2079,7 @@ async function updateOldMovies() {
     const result = await pool.query(
       `SELECT kinopoisk_id
        FROM movies
-       ORDER BY COALESCE(updated_at, created_at) ASC
+       ORDER BY COALESCE(last_checked_at, updated_at, created_at) ASC
        LIMIT $1`,
       [UPDATE_BATCH_SIZE]
     )
