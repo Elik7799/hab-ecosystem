@@ -71,10 +71,19 @@ export default function BuckshotApp() {
         const currentShell = shells[currentIndex]
         if (!currentShell || currentShell === 'unknown') return
 
+        // Уменьшаем счетчики того, что выстрелилось
         if (currentShell === 'live') setLiveCount(prev => prev - 1)
         if (currentShell === 'blank') setBlankCount(prev => prev - 1)
 
-        setCurrentIndex((prev) => prev + 1)
+        // Удаляем выстреливший патрон из массива
+        setShells((prev) => {
+            const next = [...prev]
+            next.splice(currentIndex, 1) // Удаляем 1 элемент по текущему индексу
+            return next
+        })
+
+        // Индекс текущего патрона остается тем же, 
+        // так как массив сдвинулся влево, и на это место встал следующий патрон.
     }
 
     const getProbabilities = () => {
