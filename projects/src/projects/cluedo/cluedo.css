@@ -108,6 +108,7 @@ button {
     color: var(--dop);
     letter-spacing: 1px;
     padding-left: 20px;
+    padding-top: 20px;
 }
 
 .cluedo-table {
