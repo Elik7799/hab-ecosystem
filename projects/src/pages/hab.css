@@ -6,7 +6,6 @@
   display: flex;
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  padding: 0 5%;
   box-sizing: border-box;
 }
 
@@ -14,9 +13,12 @@
 .hab-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 40px 0;
+  justify-content: center;
   border-bottom: 1px solid var(--dop);
+  width: 100%;
+  gap: 20px;
+  padding: 20px;
+  background-color: var(--middle);
 }
 
 .hab-brand {
@@ -57,7 +59,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 24px;
-  padding: 60px 0;
+  padding: 20px;
   flex: 1; /* Прижимает футер к низу */
 }
 
@@ -166,19 +168,7 @@
 
 /* Адаптив под мобилки */
 @media (max-width: 768px) {
-  .hab-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 24px 0;
-  }
-  
   .hab-grid {
     grid-template-columns: 1fr;
-    padding: 40px 0;
-  }
-  
-  .hab-card {
-    padding: 24px;
   }
 }

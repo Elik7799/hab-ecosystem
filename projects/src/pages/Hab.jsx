@@ -47,7 +47,7 @@ function Hab() {
 
   return (
     <div className="hab">
-      <header className="hab-header">
+      <div className="hab-header">
         <div className="hab-brand">
           <div className="hab-logo">H</div>
           <h1>HAB</h1>
@@ -61,7 +61,7 @@ function Hab() {
         >
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
-      </header>
+      </div>
 
       <main className="hab-grid">
         {projects.map((project) => (

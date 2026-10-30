@@ -125,23 +125,22 @@ export default function BuckshotApp() {
     if (isSetup) {
         return (
             <div className="buckshot-app">
-                <header className="buckshot-header">
-                    <div className='buckshot-header-block'>
-                        <Link to="/">
-                            <div className="hab-logo">H</div>
-                        </Link>
-                        <h1>Buckshot Helper</h1>
-                        <button
-                            type="button"
-                            className="theme-toggle"
-                            onClick={toggleTheme}
-                            title="Сменить тему"
-                        >
-                            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-                        </button>
-                    </div>
-                    <p>Настройка раунда</p>
-                </header>
+                <div className='buckshot-panel'>
+                    <Link to="/">
+                        <div className="hab-logo">H</div>
+                    </Link>
+                    <button
+                        type="button"
+                        className="theme-toggle"
+                        onClick={toggleTheme}
+                        title="Сменить тему"
+                    >
+                        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                    </button>
+                    <h1 className='buckshot-header-title'>Buckshot Helper</h1>
+                </div>
+
+                <p className='buckshot-header-txt'>Настройка раунда</p>
 
                 <div className="buckshot-setup">
                     <div className="setup-group">
@@ -176,32 +175,31 @@ export default function BuckshotApp() {
 
     return (
         <div className="buckshot-app">
-            <header className="buckshot-header">
-                <div className='buckshot-header-block'>
-                    <Link to="/">
-                        <div className="hab-logo">H</div>
-                    </Link>
-                    <h1>Buckshot Helper</h1>
-                    <button
-                        type="button"
-                        className="theme-toggle"
-                        onClick={toggleTheme}
-                        title="Сменить тему"
-                    >
-                        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-                    </button>
-                </div>
-                <p>В стволе осталось: {shells.length - currentIndex} патронов</p>
-            </header>
+            <div className='buckshot-panel'>
+                <Link to="/">
+                    <div className="hab-logo">H</div>
+                </Link>
+                <button
+                    type="button"
+                    className="theme-toggle"
+                    onClick={toggleTheme}
+                    title="Сменить тему"
+                >
+                    {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
+                <h1 className='buckshot-header-title'>Buckshot Helper</h1>
+            </div>
+
+            <p className='buckshot-header-txt'>В стволе осталось: {shells.length - currentIndex} патр.</p>
 
             <main className="buckshot-main">
                 <div className="buckshot-stats">
                     <div className="stat-box live-stat">
-                        <span className="stat-title">Боевых осталось</span>
+                        <span className="stat-title">Боевых</span>
                         <span className="stat-value">{liveCount}</span>
                     </div>
                     <div className="stat-box blank-stat">
-                        <span className="stat-title">Холостых осталось</span>
+                        <span className="stat-title">Холостых</span>
                         <span className="stat-value">{blankCount}</span>
                     </div>
                 </div>

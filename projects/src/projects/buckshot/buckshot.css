@@ -18,7 +18,6 @@
     background-color: var(--leader);
     color: var(--dop);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    padding: 24px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -32,24 +31,36 @@
     gap: 10px;
 }
 
-.buckshot-header {
-    text-align: center;
-    margin-bottom: 32px;
+.buckshot-panel {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 16px 5%;
+    background: var(--middle);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--dop);
+    width: 100%;
+    margin-bottom: 24px;
 }
 
-.buckshot-header h1 {
+.buckshot-header-title {
     color: #ff3333;
-    font-size: 32px;
+    font-size: 30px;
     margin: 0 0 8px;
     text-transform: uppercase;
     letter-spacing: 2px;
     text-shadow: 0 0 10px rgba(255, 51, 51, 0.5);
 }
 
-.buckshot-header p {
+.buckshot-header-txt {
     color: #888;
     margin: 0;
     font-size: 16px;
+    margin-bottom: 24px;
 }
 
 .buckshot-main {
@@ -58,6 +69,8 @@
     display: flex;
     flex-direction: column;
     gap: 32px;
+    padding-left: 30px;
+    padding-right: 30px;
 }
 
 /* --- ЭКРАН НАСТРОЙКИ --- */
@@ -233,7 +246,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 8px;
+    margin-bottom: 20px;
     transition: all 0.3s;
 }
 
@@ -256,7 +269,7 @@
 }
 
 .buckshot-shell.unknown .buckshot-shell-inner {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--leader);
 }
 
 .buckshot-shell.unknown .buckshot-icon {

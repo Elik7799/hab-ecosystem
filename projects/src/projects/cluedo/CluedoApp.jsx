@@ -190,7 +190,7 @@ export default function CluedoApp() {
   )
 
   return (
-    <div className={`cluedo-app ${theme === 'light' ? 'cluedo-light' : ''}`}>
+    <div className='cluedo-app'>
       <div className="cluedo-panel">
         <div className="cluedo-panel-actions">
           <Link to="/">
