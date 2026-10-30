@@ -60,17 +60,24 @@ export default function CluedoApp() {
     })
   }
 
-  // Индекс ячейки в общем массиве: 0 = "Я", 1+ = другие
-  // key для cells: `${blockId}-${rowName}-${playerIndex}`
-  // playerIndex: 0 = Я, 1..N = другие игроки
   const handleCellClick = (e, blockId, rowName, playerIndex) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const key = `${blockId}-${rowName}-${playerIndex}`
 
+    // Примерная высота попапа (в пикселях). У вас он с отступами и сеткой,
+    // поэтому берем с запасом — около 250px.
+    const POPUP_HEIGHT = 200
+    const SPACE_BELOW = window.innerHeight - rect.bottom
+
+    // Если места снизу меньше, чем высота попапа, открываем вверх
+    const openAbove = SPACE_BELOW < POPUP_HEIGHT
+
     setPopup({
       key,
       x: rect.left + rect.width / 2,
-      y: rect.bottom + 8,
+      // Если открываем вверх, отнимаем высоту попапа от верхней границы ячейки
+      y: openAbove ? rect.top - POPUP_HEIGHT : rect.bottom + 8,
+      openAbove, // передаем флаг, чтобы можно было стилизовать (необязательно)
       currentValue: cells[key] || '',
     })
   }
