@@ -1876,9 +1876,10 @@ app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
       for (const ep of season.episodes || []) {
         allEpisodes.push({
           season_number: season.number,
-          episode_number: ep.episodeNumber,
-          name_ru: ep.name, // В kinopoisk.dev это поле обычно name
-          release_date: ep.airDate, // Дата выхода
+          // Пробуем разные варианты, чтобы точно поймать номер серии
+          episode_number: ep.episodeNumber || ep.number || ep.episode,
+          name_ru: ep.name || ep.nameRu,
+          release_date: ep.airDate || ep.releaseDate,
         })
       }
     }
