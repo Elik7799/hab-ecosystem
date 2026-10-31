@@ -9,11 +9,13 @@ const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Все' },
+  { value: 'watching', label: 'Смотрю' },
   { value: 'watched', label: 'Посмотрел' },
   { value: 'want_to_watch', label: 'Буду смотреть' },
 ]
 
 const STATUS_LABELS = {
+  watching: 'Смотрю',
   watched: 'Посмотрел',
   want_to_watch: 'Буду смотреть',
 }

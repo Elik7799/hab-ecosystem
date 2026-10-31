@@ -46,6 +46,7 @@ export default function ElysiumMovieDetail() {
 
   const [episodes, setEpisodes] = useState([])
   const [watchedEpisodes, setWatchedEpisodes] = useState({})
+  const [expandedSeasons, setExpandedSeasons] = useState({})
 
   useEffect(() => {
     if (!id || !token) return
@@ -251,6 +252,13 @@ export default function ElysiumMovieDetail() {
     }
   }
 
+  const toggleSeason = (seasonNum) => {
+    setExpandedSeasons((prev) => ({
+      ...prev,
+      [seasonNum]: !prev[seasonNum],
+    }))
+  }
+
   // ЗАЩИТА ОТ БЕЛОГО ЭКРАНА
   if (loading) {
     return <MovieDetailSkeleton />
@@ -407,45 +415,67 @@ export default function ElysiumMovieDetail() {
 
       {episodes.length > 0 && (
         <div className="moviedetail-seasons">
-          <h2 className="moviedetail-heading">Серии</h2>
-          {Array.from(new Set(episodes.map((e) => e.season_number))).map((seasonNum) => (
-            <div key={seasonNum} className="season-block">
-              <h3 className="season-title">Сезон {seasonNum}</h3>
-              <div className="episodes-list">
-                {episodes
-                  .filter((e) => e.season_number === seasonNum)
-                  .map((ep) => {
-                    const key = `${ep.season_number}-${ep.episode_number}`
-                    const isWatched = watchedEpisodes[key]
-                    const isAired = !ep.release_date || new Date(ep.release_date) <= new Date()
+          <h2 className="moviedetail-heading">Сезоны</h2>
+          {Array.from(new Set(episodes.map((e) => e.season_number))).map((seasonNum) => {
+            const isExpanded = expandedSeasons[seasonNum]
+            const seasonEpisodes = episodes.filter((e) => e.season_number === seasonNum)
+            const watchedCount = seasonEpisodes.filter(
+              (e) => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
+            ).length
 
-                    return (
-                      <div
-                        key={key}
-                        className={`episode-item ${isWatched ? 'watched' : ''} ${!isAired ? 'not-aired' : ''}`}
-                        onClick={() => isAired && handleToggleEpisode(ep.season_number, ep.episode_number)}
-                      >
-                        <div className="episode-checkbox">
-                          {isWatched && <Check size={16} />}
-                        </div>
-                        <div className="episode-info">
-                          <span className="episode-number">
-                            Сезон {ep.season_number}, Серия {ep.episode_number}
-                          </span>
-                          {ep.name_ru && <span className="episode-name">{ep.name_ru}</span>}
-                          {ep.release_date && (
-                            <span className="episode-date">
-                              {new Date(ep.release_date).toLocaleDateString('ru-RU')}
+            return (
+              <div key={seasonNum} className="season-block">
+                <div
+                  className="season-header"
+                  onClick={() => toggleSeason(seasonNum)}
+                >
+                  <h3 className="season-title">
+                    Сезон {seasonNum}
+                    <span className="season-progress">
+                      ({watchedCount} / {seasonEpisodes.length})
+                    </span>
+                  </h3>
+                  <span className="season-toggle-icon">
+                    {isExpanded ? '▲' : '▼'}
+                  </span>
+                </div>
+
+                {isExpanded && (
+                  <div className="episodes-list">
+                    {seasonEpisodes.map((ep) => {
+                      const key = `${ep.season_number}-${ep.episode_number}`
+                      const isWatched = watchedEpisodes[key]
+                      const isAired = ep.release_date ? new Date(ep.release_date) <= new Date() : false
+
+                      return (
+                        <div
+                          key={key}
+                          className={`episode-item ${isWatched ? 'watched' : ''} ${!isAired ? 'not-aired' : ''}`}
+                          onClick={() => isAired && handleToggleEpisode(ep.season_number, ep.episode_number)}
+                        >
+                          <div className="episode-checkbox">
+                            {isWatched && <Check size={16} />}
+                          </div>
+                          <div className="episode-info">
+                            {/* НАЗВАНИЕ СЕРИИ ТЕПЕРЬ ГЛАВНОЕ */}
+                            <span className="episode-name-main">
+                              {ep.name_ru || `Серия ${ep.episode_number}`}
                             </span>
-                          )}
-                          {!isAired && <span className="episode-status">Еще не вышла</span>}
+                            {/* НОМЕР И ДАТА ВТОРИЧНЫ */}
+                            <span className="episode-subtitle">
+                              Серия {ep.episode_number}
+                              {ep.release_date && ` · ${new Date(ep.release_date).toLocaleDateString('ru-RU')}`}
+                            </span>
+                            {!isAired && <span className="episode-status">Еще не вышла</span>}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

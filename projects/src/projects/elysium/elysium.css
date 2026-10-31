@@ -599,6 +599,14 @@ body {
   box-shadow: 0 4px 15px rgba(46, 204, 113, 0.15);
 }
 
+/* Бледно-синий (смотрю) */
+.main-moviecard.status-watching {
+  background-color: rgba(51, 153, 255, 0.05);
+}
+.main-moviecard.status-watching:hover {
+  box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
+}
+
 /* ________________MovieDetail_______________ */
 .moviedetail-moviecard {
   background-color: rgba(199, 0, 0, 0.24);
@@ -690,7 +698,7 @@ body {
 .moviedetail-title {
   font-size: 25px;
   font-weight: bold;
-  color: var(--dop) ;
+  color: var(--dop);
   margin-bottom: 8px;
 }
 
@@ -892,45 +900,85 @@ body {
   box-shadow: 0 4px 15px rgba(46, 204, 113, 0.15);
 }
 
+/* Бледно-синий (смотрю) */
+.moviedetail-moviecard.status-watching {
+  background-color: rgba(51, 153, 255, 0.05);
+}
+.moviedetail-moviecard.status-watching:hover {
+  box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
+}
+
 /* --- Сезоны и серии --- */
 .moviedetail-seasons {
   margin-bottom: 30px;
 }
 
+/* --- Сезоны --- */
 .season-block {
-  margin-bottom: 20px;
+  margin-bottom: 15px;
   background: var(--card-bg);
-  padding: 15px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.season-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.02);
+  transition: background 0.2s;
+}
+
+.season-header:hover {
+  background: rgba(199, 0, 0, 0.05);
 }
 
 .season-title {
   font-size: 18px;
   font-weight: bold;
-  margin-bottom: 12px;
-  color: var(--text-color);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.season-progress {
+  font-size: 14px;
+  color: #888;
+  font-weight: normal;
+}
+
+.season-toggle-icon {
+  font-size: 12px;
+  color: #888;
 }
 
 .episodes-list {
   display: flex;
   flex-direction: column;
+  padding: 0 15px 15px 15px;
   gap: 8px;
 }
 
+/* --- Серии --- */
 .episode-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(0, 0, 0, 0.01);
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
+  border: 1px solid transparent;
 }
 
 .episode-item:hover {
-  background: rgba(199, 0, 0, 0.05);
+  background: rgba(199, 0, 0, 0.03);
+  border-color: rgba(199, 0, 0, 0.1);
 }
 
 .episode-item.watched {
@@ -943,9 +991,9 @@ body {
 }
 
 .episode-checkbox {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   border: 2px solid #ccc;
   display: flex;
   align-items: center;
@@ -953,6 +1001,7 @@ body {
   flex-shrink: 0;
   color: white;
   transition: 0.2s;
+  margin-top: 2px;
 }
 
 .episode-item.watched .episode-checkbox {
@@ -963,28 +1012,28 @@ body {
 .episode-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
-.episode-number {
+/* Главное — название */
+.episode-name-main {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
+  color: var(--text-color);
+  line-height: 1.3;
 }
 
-.episode-name {
+/* Вторичное — номер и дата */
+.episode-subtitle {
   font-size: 13px;
   color: #888;
-}
-
-.episode-date {
-  font-size: 12px;
-  color: #aaa;
 }
 
 .episode-status {
   font-size: 12px;
   color: rgb(199, 0, 0);
   font-weight: 600;
+  margin-top: 2px;
 }
 
 /* ________________Friends_______________ */
@@ -2081,6 +2130,14 @@ body {
   box-shadow: 0 4px 15px rgba(46, 204, 113, 0.15);
 }
 
+/* Бледно-синий (смотрю) */
+.profile-moviecard.status-watching {
+  background-color: rgba(51, 153, 255, 0.05);
+}
+.profile-moviecard.status-watching:hover {
+  box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
+}
+
 /* ________________ Notifications ________________ */
 
 .notif-wrapper {
@@ -2270,4 +2327,219 @@ body {
   background-color: var(--middle);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
   flex-shrink: 0;
+}
+
+/* ________________My Series_______________ */
+
+.my-series-body {
+  flex: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 15px;
+}
+
+.my-series-title {
+  font-size: 25px;
+  font-weight: bold;
+  color: var(--dop);
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.my-series-subtitle {
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+  margin-bottom: 30px;
+}
+
+.my-series-empty {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+  font-size: 14px;
+  background: var(--middle);
+  border-radius: 12px;
+}
+
+.my-series-link {
+  color: rgb(199, 0, 0);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.my-series-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.my-series-card {
+  display: flex;
+  gap: 20px;
+  background: var(--middle);
+  border-radius: 16px;
+  padding: 15px;
+  border: 1px solid var(--dop);
+  align-items: flex-start;
+  box-shadow: 0 2px 8px var(--dop);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.my-series-card:hover {
+  box-shadow: 0 8px 20px var(--dop);
+}
+
+.my-series-poster {
+  width: 100px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+}
+
+.my-series-info {
+  flex: 1;
+}
+
+.my-series-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--dop);
+  text-decoration: none;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.my-series-name:hover {
+  color: rgb(199, 0, 0);
+}
+
+.my-series-next {
+  background: var(--leader);
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--dop);
+}
+
+.my-series-next-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.my-series-next-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dop);
+  margin-bottom: 4px;
+}
+
+.my-series-next-meta {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 12px;
+}
+
+.my-series-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgb(199, 0, 0);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.my-series-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.my-series-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.my-series-done {
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.my-series-stats {
+  width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-series-stat {
+  text-align: center;
+}
+
+.my-series-stat-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: rgb(199, 0, 0);
+  display: block;
+}
+
+.my-series-stat-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.my-series-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--leader);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.my-series-progress-fill {
+  height: 100%;
+  background: rgb(199, 0, 0);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.my-series-progress-text {
+  font-size: 12px;
+  color: #888;
+}
+
+@media (max-width: 600px) {
+  .my-series-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  
+  .my-series-poster {
+    width: 120px;
+  }
+  
+  .my-series-info {
+    width: 100%;
+  }
+  
+  .my-series-stats {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px;
+  }
 }

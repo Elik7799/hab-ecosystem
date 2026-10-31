@@ -679,6 +679,90 @@ app.patch('/api/notifications/read-all', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Ошибка' })
   }
 })
+// ───────────────────────── MY SERIES ─────────────────────────
+
+app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
+  const userId = req.user.id
+
+  try {
+    // 1. Получаем все сериалы со статусом 'watching'
+    const moviesResult = await pool.query(
+      `SELECT 
+        m.kinopoisk_id AS "kinopoiskId",
+        m.name_ru AS "nameRu",
+        m.name_en AS "nameEn",
+        m.poster_url_preview AS "posterUrlPreview"
+       FROM user_movies um
+       JOIN movies m ON m.kinopoisk_id = um.movie_id
+       WHERE um.user_id = $1 AND um.status = 'watching'
+       ORDER BY um.id DESC`,
+      [userId]
+    )
+
+    const series = []
+
+    for (const movie of moviesResult.rows) {
+      // 2. Для каждого сериала ищем все вышедшие серии
+      const allAiredEpisodes = await pool.query(
+        `SELECT season_number, episode_number 
+         FROM seasons 
+         WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)
+         ORDER BY season_number ASC, episode_number ASC`,
+        [movie.kinopoiskId]
+      )
+
+      // 3. Ищем просмотренные серии пользователя
+      const watchedEpisodes = await pool.query(
+        `SELECT season_number, episode_number 
+         FROM user_episodes 
+         WHERE user_id = $1 AND movie_id = $2`,
+        [userId, movie.kinopoiskId]
+      )
+
+      const watchedSet = new Set(
+        watchedEpisodes.rows.map((e) => `${e.season_number}-${e.episode_number}`)
+      )
+
+      // 4. Находим первую непросмотренную вышедшую серию
+      let nextEpisode = null
+      for (const ep of allAiredEpisodes.rows) {
+        const key = `${ep.season_number}-${ep.episode_number}`
+        if (!watchedSet.has(key)) {
+          nextEpisode = ep
+          break // Нашли следующую серию для просмотра
+        }
+      }
+
+      // 5. Считаем, сколько осталось
+      const remaining = allAiredEpisodes.rows.length - watchedSet.size
+
+      // 6. Если есть nextEpisode, достаем его название
+      let nextEpisodeName = null
+      if (nextEpisode) {
+        const epDetails = await pool.query(
+          'SELECT name_ru FROM seasons WHERE movie_id = $1 AND season_number = $2 AND episode_number = $3',
+          [movie.kinopoiskId, nextEpisode.season_number, nextEpisode.episode_number]
+        )
+        nextEpisodeName = epDetails.rows[0]?.name_ru
+      }
+
+      series.push({
+        ...movie,
+        nextSeason: nextEpisode ? nextEpisode.season_number : null,
+        nextEpisode: nextEpisode ? nextEpisode.episode_number : null,
+        nextEpisodeName: nextEpisodeName,
+        remaining: remaining,
+        totalAired: allAiredEpisodes.rows.length,
+        watchedCount: watchedSet.size,
+      })
+    }
+
+    res.json({ series })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки сериалов' })
+  }
+})
 
 // ───────────────────────── PROFILE ─────────────────────────
 
@@ -2069,6 +2153,78 @@ function normalizeForCompare(value, field) {
   return value
 }
 
+async function updateSeasonsForMovie(kinopoiskId) {
+  const KINOPOISK_DEV_TOKEN = process.env.KINOPOISK_DEV_TOKEN
+  if (!KINOPOISK_DEV_TOKEN) return { changed: 0, error: 'no_token' }
+
+  try {
+    const url = `https://api.kinopoisk.dev/v1.4/season?movieId=${kinopoiskId}&limit=250`
+    const response = await fetch(url, {
+      headers: {
+        'X-API-KEY': KINOPOISK_DEV_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      return { changed: 0, error: `HTTP ${response.status}` }
+    }
+
+    const data = await response.json()
+    const allEpisodes = []
+
+    for (const season of data.docs || []) {
+      for (const ep of season.episodes || []) {
+        allEpisodes.push({
+          season_number: season.number,
+          episode_number: ep.episodeNumber || ep.number || ep.episode,
+          name_ru: ep.name || ep.nameRu,
+          release_date: ep.airDate || ep.releaseDate,
+        })
+      }
+    }
+
+    let changedCount = 0
+
+    for (const ep of allEpisodes) {
+      // Проверяем, изменилось ли что-то
+      const existing = await pool.query(
+        'SELECT name_ru, release_date FROM seasons WHERE movie_id = $1 AND season_number = $2 AND episode_number = $3',
+        [kinopoiskId, ep.season_number, ep.episode_number]
+      )
+
+      if (existing.rows.length > 0) {
+        const oldEp = existing.rows[0]
+        const oldDate = oldEp.release_date ? new Date(oldEp.release_date).toISOString().split('T')[0] : null
+        const newDate = ep.release_date ? new Date(ep.release_date).toISOString().split('T')[0] : null
+
+        if (oldEp.name_ru !== ep.name_ru || oldDate !== newDate) {
+          // Обновляем, если изменилось
+          await pool.query(
+            `UPDATE seasons SET name_ru = $1, release_date = $2 
+             WHERE movie_id = $3 AND season_number = $4 AND episode_number = $5`,
+            [ep.name_ru, ep.release_date, kinopoiskId, ep.season_number, ep.episode_number]
+          )
+          changedCount++
+        }
+      } else {
+        // Добавляем новую серию
+        await pool.query(
+          `INSERT INTO seasons (movie_id, season_number, episode_number, name_ru, release_date)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [kinopoiskId, ep.season_number, ep.episode_number, ep.name_ru, ep.release_date]
+        )
+        changedCount++
+      }
+    }
+
+    return { changed: changedCount, error: null }
+  } catch (err) {
+    console.error(`Ошибка обновления сезонов для ${kinopoiskId}:`, err.message)
+    return { changed: 0, error: err.message }
+  }
+}
+
 async function updateOneMovie(kinopoiskId) {
   const currentResult = await pool.query(
     `SELECT 
@@ -2208,6 +2364,28 @@ async function updateOneMovie(kinopoiskId) {
     [kinopoiskId]
   )
 
+  // ── 7. Обновление сезонов для сериалов ───────────────────────────
+  if (fresh.type === 'TV_SERIES' || fresh.type === 'MINI_SERIES') {
+    const seasonsResult = await updateSeasonsForMovie(kinopoiskId)
+
+    if (seasonsResult.error) {
+      // Если ошибка (например, лимит API), просто логируем
+      if (seasonsResult.error.startsWith('HTTP')) {
+        // Если лимит — прерываем
+        if (seasonsResult.error === 'HTTP 402' || seasonsResult.error === 'HTTP 429') {
+          return { changed, error: seasonsResult.error }
+        }
+      }
+      // В остальных случаях не ломаем основной процесс
+    } else if (seasonsResult.changed > 0) {
+      changed.push({
+        field: 'seasons',
+        old: '-',
+        new: `Обновлено серий: ${seasonsResult.changed}`
+      })
+    }
+  }
+
   return { changed, error: null }
 }
 
@@ -2309,8 +2487,38 @@ async function updateOldMovies() {
   await cleanupOldNotifications()
 }
 
-setTimeout(updateOldMovies, 10000)
-setInterval(updateOldMovies, UPDATE_INTERVAL)
+// Проверяем, прошло ли 12 часов с последнего обновления
+async function checkAndUpdateOnStartup() {
+  try {
+    const result = await pool.query(
+      `SELECT MAX(last_checked_at) as last_update FROM movies`
+    )
+    
+    const lastUpdate = result.rows[0]?.last_update
+    const now = new Date()
+    
+    // Если обновлений не было вообще, или прошло > 12 часов
+    if (!lastUpdate) {
+      console.log('🕒 Первичное обновление базы...')
+      updateOldMovies()
+      return
+    }
+
+    const diffHours = (now - new Date(lastUpdate)) / (1000 * 60 * 60)
+
+    if (diffHours >= 8) {
+      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. с последнего обновления. Запускаю...`)
+      updateOldMovies()
+    } else {
+      console.log(`🕒 Последнее обновление было ${Math.round(diffHours)} ч. назад. Пропускаю.`)
+    }
+  } catch (err) {
+    console.error('Ошибка проверки времени обновления:', err)
+  }
+}
+
+// Проверяем при старте сервера (через 5 секунд, чтобы БД успела подключиться)
+setTimeout(checkAndUpdateOnStartup, 15000)
 
 httpServer.listen(process.env.PORT, () => {
   console.log(`Сервер запущен на порту ${process.env.PORT}`)

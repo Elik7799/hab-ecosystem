@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon } from 'lucide-react'
+import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv } from 'lucide-react'
 import { useAuth } from '../context/ElysiumAuthContext'
 import ElysiumNotificationsBell from './ElysiumNotificationsBell'
 import { useTheme } from '../../../context/ThemeContext'
@@ -66,6 +66,10 @@ export default function ElysiumHeader() {
 
         {user && (
           <>
+            <NavLink to="/elysium/my-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
+              <Tv />
+            </NavLink>
+
             <NavLink
               to="/elysium/friends"
               className={({ isActive }) =>
@@ -146,6 +150,14 @@ export default function ElysiumHeader() {
 
           {user && (
             <>
+              <NavLink to="/elysium/my-series" className={({ isActive }) =>
+                isActive
+                  ? 'header-mobile-item header-mobile-item-active'
+                  : 'header-mobile-item'
+              }>
+                <Tv size={20} />
+                <span>Мои сериалы</span>
+              </NavLink>
               <NavLink
                 to="/elysium/friends"
                 className={({ isActive }) =>
