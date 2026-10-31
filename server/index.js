@@ -1834,8 +1834,14 @@ app.get('/api/kinopoisk/:id/similars', authMiddleware, async (req, res) => {
 // Получение серий сериала
 app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
   const { id } = req.params
+  const KINOPOISK_DEV_TOKEN = process.env.KINOPOISK_DEV_TOKEN
+
+  if (!KINOPOISK_DEV_TOKEN) {
+    return res.status(500).json({ error: 'Токен kinopoisk.dev не настроен' })
+  }
+
   try {
-    // Ищем в базе
+    // Ищем в базе (если уже кэшировали — отдаем)
     const dbResult = await pool.query(
       'SELECT season_number, episode_number, name_ru, release_date FROM seasons WHERE movie_id = $1 ORDER BY season_number, episode_number',
       [id]
@@ -1845,25 +1851,34 @@ app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
       return res.json({ episodes: dbResult.rows })
     }
 
-    // Если нет — качаем с Кинопоиска
-    const response = await fetch(`https://kinopoiskapiunofficial.tech/api/v2.2/films/${id}/seasons`, {
-      headers: kinopoiskHeaders,
+    // Идем в kinopoisk.dev
+    // Документация: эндпоинт /v1.4/season, поиск по movieId
+    const url = `https://api.kinopoisk.dev/v1.4/season?movieId=${id}&limit=250`
+
+    const response = await fetch(url, {
+      headers: {
+        'X-API-KEY': KINOPOISK_DEV_TOKEN,
+        'Content-Type': 'application/json',
+      },
     })
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'Не удалось загрузить сезоны' })
+      console.error('Ошибка kinopoisk.dev:', response.status)
+      return res.status(response.status).json({ error: 'Не удалось загрузить сезоны с kinopoisk.dev' })
     }
 
     const data = await response.json()
+
+    // Структура ответа kinopoisk.dev: { docs: [ { number: 1, episodes: [ { episodeNumber, name, airDate } ] } ] }
     const allEpisodes = []
 
-    for (const season of data.items || []) {
+    for (const season of data.docs || []) {
       for (const ep of season.episodes || []) {
         allEpisodes.push({
           season_number: season.number,
           episode_number: ep.episodeNumber,
-          name_ru: ep.nameRu,
-          release_date: ep.releaseDate,
+          name_ru: ep.name, // В kinopoisk.dev это поле обычно name
+          release_date: ep.airDate, // Дата выхода
         })
       }
     }
@@ -1873,14 +1888,17 @@ app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
       await pool.query(
         `INSERT INTO seasons (movie_id, season_number, episode_number, name_ru, release_date)
          VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (movie_id, season_number, episode_number) DO NOTHING`,
+         ON CONFLICT (movie_id, season_number, episode_number) 
+         DO UPDATE SET 
+           name_ru = COALESCE(EXCLUDED.name_ru, seasons.name_ru),
+           release_date = COALESCE(EXCLUDED.release_date, seasons.release_date)`,
         [id, ep.season_number, ep.episode_number, ep.name_ru, ep.release_date]
       )
     }
 
     res.json({ episodes: allEpisodes })
   } catch (err) {
-    console.error(err)
+    console.error('Ошибка загрузки сезонов:', err)
     res.status(500).json({ error: 'Ошибка загрузки сезонов' })
   }
 })
