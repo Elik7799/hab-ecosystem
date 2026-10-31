@@ -4,6 +4,7 @@ import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { MovieDetailSkeleton } from '../components/ElysiumSkeleton'
 import { showError } from '../../../utils/ElysiumToast'
+import { Check } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 
@@ -42,6 +43,9 @@ export default function ElysiumMovieDetail() {
   const [status, setStatus] = useState('not_watched')
   const [factsExpanded, setFactsExpanded] = useState(false)
   const [relatedStatuses, setRelatedStatuses] = useState({})
+
+  const [episodes, setEpisodes] = useState([])
+  const [watchedEpisodes, setWatchedEpisodes] = useState({})
 
   useEffect(() => {
     if (!id || !token) return
@@ -155,6 +159,37 @@ export default function ElysiumMovieDetail() {
       .finally(() => setLoading(false))
   }, [id, token])
 
+  useEffect(() => {
+    if (!movie || (movie.type !== 'TV_SERIES' && movie.type !== 'MINI_SERIES')) return
+
+    const fetchSeasons = async () => {
+      try {
+        const res = await fetch(`${API_URL_BACKEND}/kinopoisk/${id}/seasons`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        setEpisodes(data.episodes || [])
+
+        // Загружаем отмеченные серии
+        const watchedRes = await fetch(`${API_URL_BACKEND}/kinopoisk/${id}/watched-episodes`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (watchedRes.ok) {
+          const watchedData = await watchedRes.json()
+          const watchedMap = {}
+          watchedData.episodes?.forEach((ep) => {
+            watchedMap[`${ep.season_number}-${ep.episode_number}`] = true
+          })
+          setWatchedEpisodes(watchedMap)
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки серий:', err)
+      }
+    }
+
+    fetchSeasons()
+  }, [movie, id, token])
+
   const handleStatusChange = async (newStatus) => {
     if (!token) return
 
@@ -180,6 +215,39 @@ export default function ElysiumMovieDetail() {
       setStatus(previousStatus)
       showError('Не удалось сохранить статус')
       console.error(err)
+    }
+  }
+
+  const handleToggleEpisode = async (seasonNumber, episodeNumber) => {
+    const key = `${seasonNumber}-${episodeNumber}`
+    const isWatched = watchedEpisodes[key]
+
+    // Оптимистичное обновление
+    setWatchedEpisodes((prev) => ({ ...prev, [key]: !isWatched }))
+
+    try {
+      const res = await fetch(`${API_URL_BACKEND}/episodes/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          movieId: parseInt(id),
+          seasonNumber,
+          episodeNumber,
+          watched: !isWatched,
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setStatus(data.newStatus) // Обновляем статус кнопки
+      }
+    } catch (err) {
+      console.error(err)
+      // Откатываем при ошибке
+      setWatchedEpisodes((prev) => ({ ...prev, [key]: isWatched }))
     }
   }
 
@@ -259,19 +327,40 @@ export default function ElysiumMovieDetail() {
           </div>
 
           <div className="moviedetail-statuses">
-            {STATUSES.map((s) => (
+            {STATUSES.map((s) => {
+              // Скрываем кнопку "Посмотрел", если это сериал
+              const isSeries = movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES'
+              if (isSeries && s.value === 'watched') return null
+
+              // Для сериалов "Не смотрел" и "Буду смотреть"
+              return (
+                <button
+                  key={s.value}
+                  className={
+                    status === s.value
+                      ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
+                      : 'moviedetail-statusbtn'
+                  }
+                  onClick={() => handleStatusChange(s.value)}
+                >
+                  {s.label}
+                </button>
+              )
+            })}
+
+            {/* Для сериалов добавляем кнопку "Смотрю" */}
+            {movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES' ? (
               <button
-                key={s.value}
                 className={
-                  status === s.value
+                  status === 'watching' || status === 'watched'
                     ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
                     : 'moviedetail-statusbtn'
                 }
-                onClick={() => handleStatusChange(s.value)}
+                onClick={() => handleStatusChange('watching')}
               >
-                {s.label}
+                {status === 'watched' ? 'Посмотрел' : 'Смотрю'}
               </button>
-            ))}
+            ) : null}
           </div>
 
           <p className="moviedetail-description">
@@ -315,6 +404,50 @@ export default function ElysiumMovieDetail() {
           </div>
         </div>
       </div>
+
+      {episodes.length > 0 && (
+        <div className="moviedetail-seasons">
+          <h2 className="moviedetail-heading">Серии</h2>
+          {Array.from(new Set(episodes.map((e) => e.season_number))).map((seasonNum) => (
+            <div key={seasonNum} className="season-block">
+              <h3 className="season-title">Сезон {seasonNum}</h3>
+              <div className="episodes-list">
+                {episodes
+                  .filter((e) => e.season_number === seasonNum)
+                  .map((ep) => {
+                    const key = `${ep.season_number}-${ep.episode_number}`
+                    const isWatched = watchedEpisodes[key]
+                    const isAired = !ep.release_date || new Date(ep.release_date) <= new Date()
+
+                    return (
+                      <div
+                        key={key}
+                        className={`episode-item ${isWatched ? 'watched' : ''} ${!isAired ? 'not-aired' : ''}`}
+                        onClick={() => isAired && handleToggleEpisode(ep.season_number, ep.episode_number)}
+                      >
+                        <div className="episode-checkbox">
+                          {isWatched && <Check size={16} />}
+                        </div>
+                        <div className="episode-info">
+                          <span className="episode-number">
+                            Сезон {ep.season_number}, Серия {ep.episode_number}
+                          </span>
+                          {ep.name_ru && <span className="episode-name">{ep.name_ru}</span>}
+                          {ep.release_date && (
+                            <span className="episode-date">
+                              {new Date(ep.release_date).toLocaleDateString('ru-RU')}
+                            </span>
+                          )}
+                          {!isAired && <span className="episode-status">Еще не вышла</span>}
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {facts.length > 0 && (
         <div className="moviedetail-facts">

@@ -268,6 +268,78 @@ app.post('/api/login', async (req, res) => {
 })
 
 // ───────────────────────── MOVIES (статусы) ─────────────────────────
+app.get('/api/kinopoisk/:id/watched-episodes', authMiddleware, async (req, res) => {
+  const { id } = req.params
+  const userId = req.user.id
+  try {
+    const result = await pool.query(
+      'SELECT season_number, episode_number FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
+      [userId, id]
+    )
+    res.json({ episodes: result.rows })
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка' })
+  }
+})
+
+app.post('/api/episodes/toggle', authMiddleware, async (req, res) => {
+  const { movieId, seasonNumber, episodeNumber, watched } = req.body
+  const userId = req.user.id
+
+  try {
+    if (watched) {
+      await pool.query(
+        `INSERT INTO user_episodes (user_id, movie_id, season_number, episode_number)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [userId, movieId, seasonNumber, episodeNumber]
+      )
+    } else {
+      await pool.query(
+        `DELETE FROM user_episodes 
+         WHERE user_id = $1 AND movie_id = $2 AND season_number = $3 AND episode_number = $4`,
+        [userId, movieId, seasonNumber, episodeNumber]
+      )
+    }
+
+    // Считаем вышедшие и просмотренные серии
+    const allEpisodes = await pool.query(
+      `SELECT season_number, episode_number FROM seasons 
+       WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)`,
+      [movieId]
+    )
+
+    const watchedEpisodes = await pool.query(
+      `SELECT season_number, episode_number FROM user_episodes 
+       WHERE user_id = $1 AND movie_id = $2`,
+      [userId, movieId]
+    )
+
+    const totalAired = allEpisodes.rows.length
+    const totalWatched = watchedEpisodes.rows.length
+
+    // Если все серии просмотрены — ставим watched, иначе watching
+    if (totalAired > 0 && totalWatched >= totalAired) {
+      await pool.query(
+        `INSERT INTO user_movies (user_id, movie_id, status) 
+         VALUES ($1, $2, 'watched') 
+         ON CONFLICT (user_id, movie_id) DO UPDATE SET status = 'watched'`,
+        [userId, movieId]
+      )
+    } else {
+      await pool.query(
+        `INSERT INTO user_movies (user_id, movie_id, status) 
+         VALUES ($1, $2, 'watching') 
+         ON CONFLICT (user_id, movie_id) DO UPDATE SET status = 'watching'`,
+        [userId, movieId]
+      )
+    }
+
+    res.json({ success: true, newStatus: totalAired > 0 && totalWatched >= totalAired ? 'watched' : 'watching' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка отметки серии' })
+  }
+})
 
 app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
   const { movieIds } = req.body
@@ -333,9 +405,17 @@ app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
     }
   }
 
-  const allowed = ['want_to_watch', 'watched']
+  const allowed = ['want_to_watch', 'watched', 'watching']
   if (!allowed.includes(status)) {
     return res.status(400).json({ error: 'Неверный статус' })
+  }
+
+  // Если это сериал, нельзя ставить 'watched' напрямую
+  if (status === 'watched') {
+    const movieType = await pool.query('SELECT type FROM movies WHERE kinopoisk_id = $1', [movieId])
+    if (movieType.rows[0]?.type === 'TV_SERIES' || movieType.rows[0]?.type === 'MINI_SERIES') {
+      return res.status(400).json({ error: 'Сериалы нельзя отметить как просмотренные напрямую. Отмечайте серии.' })
+    }
   }
 
   try {
@@ -1748,6 +1828,60 @@ app.get('/api/kinopoisk/:id/similars', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка загрузки похожих' })
+  }
+})
+
+// Получение серий сериала
+app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
+  const { id } = req.params
+  try {
+    // Ищем в базе
+    const dbResult = await pool.query(
+      'SELECT season_number, episode_number, name_ru, release_date FROM seasons WHERE movie_id = $1 ORDER BY season_number, episode_number',
+      [id]
+    )
+
+    if (dbResult.rows.length > 0) {
+      return res.json({ episodes: dbResult.rows })
+    }
+
+    // Если нет — качаем с Кинопоиска
+    const response = await fetch(`https://kinopoiskapiunofficial.tech/api/v2.2/films/${id}/seasons`, {
+      headers: kinopoiskHeaders,
+    })
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Не удалось загрузить сезоны' })
+    }
+
+    const data = await response.json()
+    const allEpisodes = []
+
+    for (const season of data.items || []) {
+      for (const ep of season.episodes || []) {
+        allEpisodes.push({
+          season_number: season.number,
+          episode_number: ep.episodeNumber,
+          name_ru: ep.nameRu,
+          release_date: ep.releaseDate,
+        })
+      }
+    }
+
+    // Сохраняем в базу
+    for (const ep of allEpisodes) {
+      await pool.query(
+        `INSERT INTO seasons (movie_id, season_number, episode_number, name_ru, release_date)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (movie_id, season_number, episode_number) DO NOTHING`,
+        [id, ep.season_number, ep.episode_number, ep.name_ru, ep.release_date]
+      )
+    }
+
+    res.json({ episodes: allEpisodes })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки сезонов' })
   }
 })
 
