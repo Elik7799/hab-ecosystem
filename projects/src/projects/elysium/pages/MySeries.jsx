@@ -13,26 +13,26 @@ export default function ElysiumMySeries() {
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState(null)
 
-  useEffect(() => {
+  // Выносим fetchSeries в отдельную функцию, чтобы вызывать её повторно
+  const fetchSeries = async () => {
     if (!token) return
-
-    const fetchSeries = async () => {
-      try {
-        const res = await fetch(`${API_URL_BACKEND}/users/me/watching`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setSeries(data.series || [])
-        }
-      } catch (err) {
-        console.error(err)
-        showError('Ошибка загрузки сериалов')
-      } finally {
-        setLoading(false)
+    try {
+      const res = await fetch(`${API_URL_BACKEND}/users/me/watching`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSeries(data.series || [])
       }
+    } catch (err) {
+      console.error(err)
+      showError('Ошибка загрузки сериалов')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchSeries()
   }, [token])
 
@@ -55,26 +55,11 @@ export default function ElysiumMySeries() {
 
       if (res.ok) {
         showSuccess(`Серия ${season}x${episode} отмечена как просмотренная!`)
-        
-        // Обновляем локально, чтобы не перезагружать страницу
-        setSeries((prev) =>
-          prev.map((s) => {
-            if (s.kinopoiskId !== show.kinopoiskId) return s
 
-            const newWatchedCount = s.watchedCount + 1
-            const newRemaining = s.remaining - 1
-
-            // Если это была последняя серия — сериал исчезает из списка (статус станет watched)
-            if (newRemaining <= 0) {
-              setTimeout(() => {
-                setSeries((current) => current.filter((item) => item.kinopoiskId !== show.kinopoiskId))
-              }, 1000)
-              return { ...s, watchedCount: newWatchedCount, remaining: 0, nextEpisode: null }
-            }
-
-            return { ...s, watchedCount: newWatchedCount, remaining: newRemaining }
-          })
-        )
+        // ВМЕСТО локального обновления — заново запрашиваем список с бэкенда.
+        // Это гарантирует, что мы получим актуальную "следующую серию".
+        // Бэкенд уже знает, что все серии просмотрены, и сам изменит статус.
+        await fetchSeries()
       } else {
         showError('Не удалось отметить серию')
       }
@@ -156,8 +141,8 @@ export default function ElysiumMySeries() {
                   <span className="my-series-stat-label">осталось</span>
                 </div>
                 <div className="my-series-progress-bar">
-                  <div 
-                    className="my-series-progress-fill" 
+                  <div
+                    className="my-series-progress-fill"
                     style={{ width: `${(show.watchedCount / (show.totalAired || 1)) * 100}%` }}
                   ></div>
                 </div>
