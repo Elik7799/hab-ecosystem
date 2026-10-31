@@ -2103,7 +2103,7 @@ const {
 } = require('./logger')
 
 const UPDATE_INTERVAL = 24 * 60 * 60 * 1000
-const UPDATE_BATCH_SIZE = 50
+const UPDATE_BATCH_SIZE = 100
 const UPDATE_DELAY_MS = 300
 
 // Поля, которые обновляем из API → колонки в БД
