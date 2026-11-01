@@ -4,11 +4,14 @@ export default function ElysiumFooter() {
   return (
     <footer className="footer">
       <div className="footer-top">
-        <div>
+        <div className='footer-top-block1'>
           <p className="footer-logo">Elysium</p>
           <p className="footer-txt">
             Сервис для подбора фильмов и сериалов с друзьями
           </p>
+        </div>
+        <div className='footer-top-block2'>
+          <Link to="/elysium/import" className="footer-logo">Импорт</Link>
         </div>
       </div>
 

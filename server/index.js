@@ -1,4 +1,6 @@
 require('dotenv').config()
+const multer = require('multer')
+const upload = multer({ storage: multer.memoryStorage() })
 const express = require('express')
 const { Pool } = require('pg')
 const bcrypt = require('bcrypt')
@@ -264,6 +266,60 @@ app.post('/api/login', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка входа' })
+  }
+})
+
+app.post('/api/import/upload', authMiddleware, upload.single('file'), async (req, res) => {
+  const userId = req.user.id
+  const file = req.file
+
+  if (!file) {
+    return res.status(400).json({ error: 'Файл не загружен' })
+  }
+
+  // Проверка расширения (только .xls)
+  const ext = file.originalname.split('.').pop().toLowerCase()
+  if (ext !== 'xls') {
+    return res.status(400).json({ error: 'Поддерживается только формат .xls' })
+  }
+
+  try {
+    const form = new FormData()
+    
+    // Параметры письма для RuSender
+    form.append('mail[to][email]', process.env.RUSENDER_TO_EMAIL)
+    form.append('mail[to][name]', 'Организаторы Elysium')
+    form.append('mail[from][email]', process.env.RUSENDER_FROM_EMAIL)
+    form.append('mail[from][name]', 'Elysium Import')
+    form.append('mail[subject]', `Новый импорт фильмов от пользователя #${userId}`)
+    form.append('mail[text]', `Пользователь с ID ${userId} отправил файл для импорта фильмов.`)
+    
+    // Прикрепляем файл
+    form.append('mail[attachments][]', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    })
+
+    // Отправка
+    const response = await axios.post(
+      'https://api.rusender.ru/api/v1/external-mails/send',
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          'X-Api-Key': process.env.RUSENDER_API_KEY,
+        },
+      }
+    )
+
+    if (response.status === 200 || response.status === 201) {
+      res.json({ success: true, message: 'Файл успешно отправлен' })
+    } else {
+      res.status(500).json({ error: 'Ошибка отправки через RuSender' })
+    }
+  } catch (err) {
+    console.error('Ошибка импорта:', err.response?.data || err.message)
+    res.status(500).json({ error: 'Не удалось отправить файл. Попробуйте позже.' })
   }
 })
 
@@ -2477,6 +2533,20 @@ async function cleanupOldNotifications() {
   }
 }
 
+async function cleanupOldMatchRooms() {
+  try {
+    const result = await pool.query(
+      `DELETE FROM match_rooms 
+       WHERE status = 'cancelled' AND cancelled_at < NOW() - INTERVAL '7 days'`
+    )
+    if (result.rowCount > 0) {
+      logUpdate(`🧹 Удалено старых отмененных комнат: ${result.rowCount}`)
+    }
+  } catch (err) {
+    logError('cleanup-match-rooms', err.message)
+  }
+}
+
 async function updateOldMovies() {
   logUpdate('Проверяю фильмы для обновления...')
 
@@ -2559,6 +2629,8 @@ async function updateOldMovies() {
   }
 
   await cleanupOldNotifications()
+
+  await cleanupOldMatchRooms()
 }
 
 // Проверяем, прошло ли 12 часов с последнего обновления

@@ -229,6 +229,16 @@ body {
   flex-wrap: wrap;
 }
 
+.footer-top-block1 {
+  width: 50%;
+}
+
+.footer-top-block2 {
+  width: 50%;
+  display: flex;
+  justify-content: end;
+}
+
 .footer-logo {
   color: white;
   background-color: rgb(199, 0, 0);
@@ -2521,4 +2531,128 @@ body {
 .season-bulk-btn:hover {
   background: rgba(46, 204, 113, 0.2);
   border-color: rgba(46, 204, 113, 0.5);
+}
+
+/* ________________Import_______________ */
+
+.import-body {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 40px 15px;
+}
+
+.import-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: var(--dop);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.import-instruction {
+  background: var(--middle);
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 30px;
+  border: 1px solid var(--dop);
+  color: var(--dop);
+  line-height: 1.6;
+}
+
+.import-instruction h2 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.import-instruction ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.import-upload-area {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  border: 2px dashed #c70000;
+  border-radius: 12px;
+  background: rgba(199, 0, 0, 0.05);
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--dop);
+}
+
+.import-dropzone:hover {
+  background: rgba(199, 0, 0, 0.1);
+}
+
+.import-dropzone p {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.import-dropzone span {
+  font-size: 13px;
+  color: #888;
+}
+
+.import-file-info {
+  text-align: center;
+  font-size: 14px;
+  color: var(--dop);
+  background: var(--middle);
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.import-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: rgb(199, 0, 0);
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.import-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  padding: 40px;
+  background: var(--middle);
+  border-radius: 12px;
+  border: 1px solid #22c55e;
+  text-align: center;
+  color: var(--dop);
+}
+
+.import-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  background: rgb(199, 0, 0);
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
 }

@@ -10,6 +10,7 @@ import ElysiumMatch from './pages/Match'
 import ElysiumMovieDetail from './pages/MovieDetail'
 import ElysiumProfile from './pages/Profile'
 import ElysiumMySeries from './pages/MySeries'
+import ElysiumImport from './pages/Import'
 
 import './elysium.css'
 import './elysiumMobile.css'
@@ -30,6 +31,7 @@ function ElysiumApp() {
           <Route path="profile" element={<ElysiumProtectedRoute><ElysiumProfile /></ElysiumProtectedRoute>}/>
           <Route path="profile/:id" element={<ElysiumProtectedRoute><ElysiumProfile /></ElysiumProtectedRoute>}/>
           <Route path="my-series" element={<ElysiumProtectedRoute><ElysiumMySeries /></ElysiumProtectedRoute>} />
+          <Route path="import" element={<ElysiumProtectedRoute><ElysiumImport /></ElysiumProtectedRoute>} />
 
         </Routes>
       </main>
