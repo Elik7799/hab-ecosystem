@@ -19,8 +19,8 @@ export default function ElysiumImport() {
 
     // Проверка расширения
     const ext = selected.name.split('.').pop().toLowerCase()
-    if (ext !== 'xls') {
-      showError('Пожалуйста, выберите файл в формате .xls')
+    if (ext !== 'xlsx') {
+      showError('Пожалуйста, выберите файл в формате .xlsx')
       setFile(null)
       return
     }
@@ -66,13 +66,13 @@ export default function ElysiumImport() {
 
       <div className="import-instruction">
         <h2>Инструкция</h2>
-        <p>Для импорта ваших фильмов подготовьте файл в формате <strong>.xls</strong> (Excel 97-2003).</p>
+        <p>Для импорта ваших фильмов подготовьте файл в формате <strong>.xlsx</strong> (Excel 97-2003).</p>
         <ul>
           <li>В первом столбце должно быть <strong>название фильма</strong>.</li>
           <li>Во втором столбце — <strong>год</strong> выхода.</li>
           <li>В третьем столбце — <strong>статус</strong> (например: "Посмотрел" или "Буду смотреть").</li>
         </ul>
-        <p>Файлы других форматов (.xlsx, .csv) не принимаются.</p>
+        <p>Файлы других форматов не принимаются.</p>
       </div>
 
       {isSuccess ? (
@@ -86,7 +86,7 @@ export default function ElysiumImport() {
         <div className="import-upload-area">
           <input
             type="file"
-            accept=".xls"
+            accept=".xlsx"
             ref={fileInputRef}
             onChange={handleFileChange}
             style={{ display: 'none' }}
@@ -98,7 +98,7 @@ export default function ElysiumImport() {
           >
             <FileSpreadsheet size={48} color="#c70000" />
             <p>Нажмите, чтобы выбрать файл</p>
-            <span>Только формат .xls</span>
+            <span>Только формат .xlsx</span>
           </div>
 
           {file && (

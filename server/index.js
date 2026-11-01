@@ -279,9 +279,17 @@ app.post('/api/import/upload', authMiddleware, upload.single('file'), async (req
     return res.status(400).json({ error: 'Файл не загружен' })
   }
 
+  // 1. Проверка расширения
   const ext = file.originalname.split('.').pop().toLowerCase()
-  if (ext !== 'xls') {
-    return res.status(400).json({ error: 'Поддерживается только формат .xls' })
+  if (ext !== 'xlsx') {
+    return res.status(400).json({ error: 'Поддерживается только формат .xlsx' })
+  }
+
+  // 2. Проверка магических байтов (реальный тип файла)
+  // XLSX — это ZIP-архив. Он всегда начинается с байтов 50 4B 03 04 (PK..)
+  const magicBytes = file.buffer.slice(0, 4).toString('hex').toUpperCase()
+  if (magicBytes !== '504B0304') {
+    return res.status(400).json({ error: 'Файл поврежден или не является настоящим .xlsx' })
   }
 
   if (!TELEGRAM_TOKEN || !CHAT_ID) {
@@ -289,19 +297,17 @@ app.post('/api/import/upload', authMiddleware, upload.single('file'), async (req
   }
 
   try {
-    // Формируем FormData для Telegram
     const formData = new FormData()
     formData.append('chat_id', CHAT_ID)
     formData.append('caption', `Новый импорт фильмов от пользователя #${userId}`)
     
-    // В Node.js fetch умеет принимать Blob, поэтому превращаем Buffer в Blob
-    const blob = new Blob([file.buffer], { type: 'application/vnd.ms-excel' })
+    // Используем Blob для правильной отправки бинарных данных
+    const blob = new Blob([file.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     formData.append('document', blob, file.originalname)
 
-    // Отправляем в Telegram
     const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
       method: 'POST',
-      body: formData, // fetch сам установит правильный Content-Type для FormData
+      body: formData,
     })
 
     const data = await response.json()
