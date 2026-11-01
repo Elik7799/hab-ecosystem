@@ -272,53 +272,48 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/import/upload', authMiddleware, upload.single('file'), async (req, res) => {
   const userId = req.user.id
   const file = req.file
+  const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN
+  const CHAT_ID = process.env.TELEGRAM_CHAT_ID
 
   if (!file) {
     return res.status(400).json({ error: 'Файл не загружен' })
   }
 
-  // Проверка расширения (только .xls)
   const ext = file.originalname.split('.').pop().toLowerCase()
   if (ext !== 'xls') {
     return res.status(400).json({ error: 'Поддерживается только формат .xls' })
   }
 
+  if (!TELEGRAM_TOKEN || !CHAT_ID) {
+    return res.status(500).json({ error: 'Telegram не настроен на сервере' })
+  }
+
   try {
-    const form = new FormData()
+    // Формируем FormData для Telegram
+    const formData = new FormData()
+    formData.append('chat_id', CHAT_ID)
+    formData.append('caption', `Новый импорт фильмов от пользователя #${userId}`)
     
-    // Параметры письма для RuSender
-    form.append('mail[to][email]', process.env.RUSENDER_TO_EMAIL)
-    form.append('mail[to][name]', 'Организаторы Elysium')
-    form.append('mail[from][email]', process.env.RUSENDER_FROM_EMAIL)
-    form.append('mail[from][name]', 'Elysium Import')
-    form.append('mail[subject]', `Новый импорт фильмов от пользователя #${userId}`)
-    form.append('mail[text]', `Пользователь с ID ${userId} отправил файл для импорта фильмов.`)
-    
-    // Прикрепляем файл
-    form.append('mail[attachments][]', file.buffer, {
-      filename: file.originalname,
-      contentType: file.mimetype,
+    // В Node.js fetch умеет принимать Blob, поэтому превращаем Buffer в Blob
+    const blob = new Blob([file.buffer], { type: 'application/vnd.ms-excel' })
+    formData.append('document', blob, file.originalname)
+
+    // Отправляем в Telegram
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
+      method: 'POST',
+      body: formData, // fetch сам установит правильный Content-Type для FormData
     })
 
-    // Отправка
-    const response = await axios.post(
-      'https://api.rusender.ru/api/v1/external-mails/send',
-      form,
-      {
-        headers: {
-          ...form.getHeaders(),
-          'X-Api-Key': process.env.RUSENDER_API_KEY,
-        },
-      }
-    )
+    const data = await response.json()
 
-    if (response.status === 200 || response.status === 201) {
-      res.json({ success: true, message: 'Файл успешно отправлен' })
-    } else {
-      res.status(500).json({ error: 'Ошибка отправки через RuSender' })
+    if (!data.ok) {
+      console.error('Ошибка Telegram:', data.description)
+      throw new Error(data.description || 'Ошибка Telegram API')
     }
+
+    res.json({ success: true, message: 'Файл отправлен в Telegram' })
   } catch (err) {
-    console.error('Ошибка импорта:', err.response?.data || err.message)
+    console.error('Ошибка импорта:', err.message)
     res.status(500).json({ error: 'Не удалось отправить файл. Попробуйте позже.' })
   }
 })
