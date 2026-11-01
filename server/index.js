@@ -341,6 +341,81 @@ app.post('/api/episodes/toggle', authMiddleware, async (req, res) => {
   }
 })
 
+app.post('/api/episodes/bulk-toggle', authMiddleware, async (req, res) => {
+  const { movieId, seasonNumber, episodes, watched } = req.body
+  const userId = req.user.id
+
+  if (!episodes || !Array.isArray(episodes)) {
+    return res.status(400).json({ error: 'Неверный формат данных' })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    for (const ep of episodes) {
+      if (watched) {
+        await client.query(
+          `INSERT INTO user_episodes (user_id, movie_id, season_number, episode_number)
+           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+          [userId, movieId, seasonNumber, ep.episode_number]
+        )
+      } else {
+        await client.query(
+          `DELETE FROM user_episodes 
+           WHERE user_id = $1 AND movie_id = $2 AND season_number = $3 AND episode_number = $4`,
+          [userId, movieId, seasonNumber, ep.episode_number]
+        )
+      }
+    }
+
+    // Пересчитываем статус всего сериала
+    const allAiredEpisodes = await client.query(
+      `SELECT season_number, episode_number FROM seasons 
+       WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)`,
+      [movieId]
+    )
+
+    const watchedEpisodes = await client.query(
+      `SELECT season_number, episode_number FROM user_episodes 
+       WHERE user_id = $1 AND movie_id = $2`,
+      [userId, movieId]
+    )
+
+    const totalAired = allAiredEpisodes.rows.length
+    const totalWatched = watchedEpisodes.rows.length
+
+    let newStatus = 'watching'
+    if (totalAired > 0 && totalWatched >= totalAired) {
+      newStatus = 'watched'
+    } else if (totalWatched === 0) {
+      // Если ничего не просмотрено, удаляем статус (или ставим not_watched)
+      await client.query(
+        'DELETE FROM user_movies WHERE user_id = $1 AND movie_id = $2',
+        [userId, movieId]
+      )
+      await client.query('COMMIT')
+      return res.json({ success: true, newStatus: 'not_watched' })
+    }
+
+    await client.query(
+      `INSERT INTO user_movies (user_id, movie_id, status) 
+       VALUES ($1, $2, $3) 
+       ON CONFLICT (user_id, movie_id) DO UPDATE SET status = EXCLUDED.status`,
+      [userId, movieId, newStatus]
+    )
+
+    await client.query('COMMIT')
+    res.json({ success: true, newStatus })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка массовой отметки' })
+  } finally {
+    client.release()
+  }
+})
+
 app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
   const { movieIds } = req.body
   const userId = req.user.id

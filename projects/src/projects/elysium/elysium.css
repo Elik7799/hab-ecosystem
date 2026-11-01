@@ -2502,3 +2502,23 @@ body {
   color: #888;
   white-space: nowrap; /* ЗАПРЕЩАЕМ ПЕРЕНОС СТРОКИ */
 }
+
+.season-bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(46, 204, 113, 0.1);
+  color: rgb(46, 204, 113);
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.season-bulk-btn:hover {
+  background: rgba(46, 204, 113, 0.2);
+  border-color: rgba(46, 204, 113, 0.5);
+}

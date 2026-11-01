@@ -251,6 +251,54 @@ export default function ElysiumMovieDetail() {
       setWatchedEpisodes((prev) => ({ ...prev, [key]: isWatched }))
     }
   }
+  const handleBulkToggleSeason = async (seasonNum, action) => {
+    const seasonEpisodes = episodes.filter((e) => e.season_number === seasonNum)
+
+    // Фильтруем только вышедшие серии
+    const airedEpisodes = seasonEpisodes.filter((e) =>
+      e.release_date ? new Date(e.release_date) <= new Date() : false
+    )
+
+    if (airedEpisodes.length === 0) return
+
+    try {
+      const res = await fetch(`${API_URL_BACKEND}/episodes/bulk-toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          movieId: parseInt(id),
+          seasonNumber: seasonNum,
+          episodes: airedEpisodes,
+          watched: action === 'watch',
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setStatus(data.newStatus)
+
+        // Обновляем локальный стейт watchedEpisodes
+        setWatchedEpisodes((prev) => {
+          const next = { ...prev }
+          airedEpisodes.forEach((ep) => {
+            const key = `${ep.season_number}-${ep.episode_number}`
+            if (action === 'watch') {
+              next[key] = true
+            } else {
+              delete next[key]
+            }
+          })
+          return next
+        })
+      }
+    } catch (err) {
+      console.error(err)
+      showError('Ошибка отметки сезона')
+    }
+  }
 
   const toggleSeason = (seasonNum) => {
     setExpandedSeasons((prev) => ({
@@ -425,19 +473,47 @@ export default function ElysiumMovieDetail() {
 
             return (
               <div key={seasonNum} className="season-block">
-                <div
-                  className="season-header"
-                  onClick={() => toggleSeason(seasonNum)}
-                >
+                <div className="season-header" onClick={() => toggleSeason(seasonNum)}>
                   <h3 className="season-title">
                     Сезон {seasonNum}
                     <span className="season-progress">
                       ({watchedCount} / {seasonEpisodes.length})
                     </span>
                   </h3>
-                  <span className="season-toggle-icon">
-                    {isExpanded ? '▲' : '▼'}
-                  </span>
+
+                  {/* НОВАЯ КНОПКА */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {(() => {
+                      // Считаем, есть ли непросмотренные вышедшие серии
+                      const airedEpisodes = seasonEpisodes.filter(e =>
+                        e.release_date ? new Date(e.release_date) <= new Date() : false
+                      )
+                      const allAiredWatched = airedEpisodes.length > 0 && airedEpisodes.every(
+                        e => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
+                      )
+
+                      if (airedEpisodes.length === 0 || allAiredWatched) return null
+
+                      return (
+                        <button
+                          type="button"
+                          className="season-bulk-btn"
+                          onClick={(e) => {
+                            e.stopPropagation() // Чтобы не срабатывало сворачивание сезона
+                            handleBulkToggleSeason(seasonNum, 'watch')
+                          }}
+                          title="Отметить все вышедшие серии просмотренными"
+                        >
+                          <Check size={14} />
+                          Отметить сезон
+                        </button>
+                      )
+                    })()}
+
+                    <span className="season-toggle-icon">
+                      {isExpanded ? '▲' : '▼'}
+                    </span>
+                  </div>
                 </div>
 
                 {isExpanded && (
