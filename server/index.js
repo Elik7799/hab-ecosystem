@@ -2834,7 +2834,6 @@ async function updateOldMovies() {
 
 async function checkAndUpdateOnStartup() {
   try {
-    // Смотрим на поле last_checked_at_all
     const result = await pool.query(
       `SELECT MAX(last_checked_at_all) as last_full_update FROM movies`
     )
@@ -2842,14 +2841,32 @@ async function checkAndUpdateOnStartup() {
     const lastFullUpdate = result.rows[0]?.last_full_update
     const now = new Date()
     
-    // Если глобального обновления не было вообще
+    // Отладка: показываем, что видит сервер
+    console.log('🕒 Отладка времени:')
+    console.log('   lastFullUpdate (из БД):', lastFullUpdate)
+    console.log('   now (на сервере):', now.toISOString())
+    
     if (!lastFullUpdate) {
       console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю...')
       updateOldMovies()
       return
     }
 
-    const diffHours = (now - new Date(lastFullUpdate)) / (1000 * 60 * 60)
+    // Принудительно приводим к UTC
+    const lastTime = new Date(lastFullUpdate).getTime()
+    const nowTime = now.getTime()
+    
+    // Если разница отрицательная (время из будущего) — значит, часы сбиты
+    // В этом случае лучше запустить обновление
+    if (nowTime < lastTime) {
+      console.log('🕒 Время из БД в будущем. Часовые пояса сбиты. Запускаю обновление...')
+      updateOldMovies()
+      return
+    }
+
+    const diffHours = (nowTime - lastTime) / (1000 * 60 * 60)
+
+    console.log(`   Разница: ${diffHours.toFixed(2)} ч.`)
 
     if (diffHours >= 8) {
       console.log(`🕒 Прошло ${Math.round(diffHours)} ч. с последнего глобального обновления. Запускаю...`)
