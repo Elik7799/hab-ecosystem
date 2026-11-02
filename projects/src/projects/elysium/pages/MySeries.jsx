@@ -308,7 +308,7 @@ export default function ElysiumMySeries() {
       {/* ============ НИЖНИЙ БЛОК: БУДУ СМОТРЕТЬ ============ */}
       <div className="my-series-header-row my-series-header-row-planned">
         <div>
-          <h2 className="my-series-title my-series-title-planned">Буду смотреть</h2>
+          <h2 className="my-series-title">Буду смотреть</h2>
           <p className="my-series-subtitle">Сериалы, которые вы отложили на потом</p>
         </div>
 
@@ -360,7 +360,7 @@ export default function ElysiumMySeries() {
                     </span>
                   )}
                   {show.episodesCount > 0 && (
-                    <span>{show.episodesCount} серий</span>
+                    <span>{show.episodesCount} сер.</span>
                   )}
                 </div>
               </div>

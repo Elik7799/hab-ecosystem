@@ -1800,45 +1800,111 @@ const kinopoiskHeaders = {
 
 app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
   const page = parseInt(req.query.page) || 1
-  const limit = parseInt(req.query.limit) || 20
-  const offset = (page - 1) * limit
-  const userId = req.user.id // Получаем ID текущего пользователя
+  const category = req.query.category || 'MARVEL'
+  const userId = req.user.id
 
   try {
-    const countResult = await pool.query('SELECT COUNT(*) FROM main_movies')
-    const total = parseInt(countResult.rows[0].count)
+    // Если это наша кастомная категория MARVEL
+    if (category === 'MARVEL') {
+      const limit = parseInt(req.query.limit) || 20
+      const offset = (page - 1) * limit
 
-    const result = await pool.query(
-      `SELECT 
-        m.kinopoisk_id AS "kinopoiskId",
-        m.name_ru AS "nameRu",
-        m.name_en AS "nameEn",
-        m.name_original AS "nameOriginal",
-        m.year,
-        m.type,
-        m.poster_url AS "posterUrl",
-        m.poster_url_preview AS "posterUrlPreview",
-        m.rating_kinopoisk AS "ratingKinopoisk",
-        m.rating_imdb AS "ratingImdb",
-        m.description,
-        m.film_length AS "filmLength",
-        m.slogan,
-        COALESCE(um.status, 'not_watched') AS status
-       FROM main_movies mm
-       JOIN movies m ON m.id = mm.movie_id
-       LEFT JOIN user_movies um ON um.movie_id = m.kinopoisk_id AND um.user_id = $3
-       ORDER BY mm.position ASC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset, userId]
+      const countResult = await pool.query('SELECT COUNT(*) FROM main_movies')
+      const total = parseInt(countResult.rows[0].count)
+
+      const result = await pool.query(
+        `SELECT 
+          m.kinopoisk_id AS "kinopoiskId",
+          m.name_ru AS "nameRu",
+          m.name_en AS "nameEn",
+          m.name_original AS "nameOriginal",
+          m.year,
+          m.type,
+          m.poster_url AS "posterUrl",
+          m.poster_url_preview AS "posterUrlPreview",
+          m.rating_kinopoisk AS "ratingKinopoisk",
+          m.rating_imdb AS "ratingImdb",
+          m.description,
+          m.film_length AS "filmLength",
+          m.slogan,
+          COALESCE(um.status, 'not_watched') AS status
+         FROM main_movies mm
+         JOIN movies m ON m.id = mm.movie_id
+         LEFT JOIN user_movies um ON um.movie_id = m.kinopoisk_id AND um.user_id = $3
+         ORDER BY mm.position ASC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset, userId]
+      )
+
+      return res.json({
+        items: result.rows,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: offset + result.rows.length < total,
+      })
+    }
+
+    // Иначе идем в API Кинопоиска
+    const response = await fetch(
+      `https://kinopoiskapiunofficial.tech/api/v2.2/films/collections?type=${category}&page=${page}`,
+      { headers: kinopoiskHeaders }
     )
 
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Ошибка загрузки категории' })
+    }
+
+    const data = await response.json()
+    const films = data.items || []
+    
+    // Сохраняем фильмы в базу, чтобы потом отдавать их с нашим статусом
+    const filmIds = []
+    for (const film of films) {
+      await saveMovieToDb({
+        kinopoiskId: film.kinopoiskId,
+        nameRu: film.nameRu,
+        nameEn: film.nameEn,
+        nameOriginal: film.nameOriginal,
+        year: film.year,
+        type: film.type,
+        posterUrl: film.posterUrl,
+        posterUrlPreview: film.posterUrlPreview,
+        ratingKinopoisk: film.ratingKinopoisk,
+        ratingImdb: film.ratingImdb,
+        description: film.description,
+        filmLength: film.filmLength,
+        slogan: film.slogan,
+      })
+      filmIds.push(film.kinopoiskId)
+    }
+
+    // Получаем статусы пользователя для этих фильмов
+    const statuses = {}
+    if (filmIds.length > 0) {
+      const statusResult = await pool.query(
+        'SELECT movie_id, status FROM user_movies WHERE user_id = $1 AND movie_id = ANY($2)',
+        [userId, filmIds]
+      )
+      statusResult.rows.forEach((row) => {
+        statuses[row.movie_id] = row.status
+      })
+    }
+
+    // Добавляем статусы к каждому фильму
+    const items = films.map((film) => ({
+      ...film,
+      kinopoiskId: film.kinopoiskId,
+      status: statuses[film.kinopoiskId] || 'not_watched',
+    }))
+
     res.json({
-      items: result.rows,
+      items,
       page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-      hasMore: offset + result.rows.length < total,
+      totalPages: data.totalPages || 1,
+      hasMore: page < (data.totalPages || 1),
+      total: data.total || 0,
     })
   } catch (err) {
     console.error(err)

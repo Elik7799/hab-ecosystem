@@ -8,6 +8,26 @@ import { showError } from '../../../utils/ElysiumToast'
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
 
+const CATEGORIES = [
+  { value: 'MARVEL', label: 'Киновселенная MARVEL' },
+  { value: 'TOP_POPULAR_ALL', label: 'Популярное (все)' },
+  { value: 'TOP_POPULAR_MOVIES', label: 'Популярные фильмы' },
+  { value: 'TOP_250_TV_SHOWS', label: 'Топ 250 сериалов' },
+  { value: 'TOP_250_MOVIES', label: 'Топ 250 фильмов' },
+  { value: 'VAMPIRE_THEME', label: 'Вампиры' },
+  { value: 'COMICS_THEME', label: 'Комиксы' },
+  { value: 'CLOSES_RELEASES', label: 'Скоро выйдут' },
+  { value: 'FAMILY', label: 'Семейное' },
+  { value: 'OSKAR_WINNERS_2021', label: 'Оскар 2021' },
+  { value: 'LOVE_THEME', label: 'Любовь' },
+  { value: 'ZOMBIE_THEME', label: 'Зомби' },
+  { value: 'CATASTROPHE_THEME', label: 'Катастрофы' },
+  { value: 'KIDS_ANIMATION_THEME', label: 'Детские мультфильмы' },
+  { value: 'POPULAR_SERIES', label: 'Популярные сериалы' },
+  { value: 'TOP_100_GREATEST_MOVIES_XXI', label: '100 лучших фильмов XXI' },
+  { value: 'PROGRAMMERS_THEME', label: 'Про программистов' },
+]
+
 const FILTERS = [
   { value: 'ALL', label: 'Все' },
   { value: 'FILM', label: 'Фильмы' },
@@ -23,6 +43,7 @@ export default function ElysiumMain() {
   const [query, setQuery] = useState('')
   const [movies, setMovies] = useState([])
   const [filter, setFilter] = useState('ALL')
+  const [category, setCategory] = useState('MARVEL')
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
@@ -43,7 +64,7 @@ export default function ElysiumMain() {
 
       try {
         const res = await fetch(
-          `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}`,
+          `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}&category=${category}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
 
@@ -69,13 +90,16 @@ export default function ElysiumMain() {
         setLoadingMore(false)
       }
     },
-    [token]
+    [token, category]
   )
 
+  // Сброс при смене категории
   useEffect(() => {
-    if (!token) return
+    if (!token || isSearching) return
+    setMovies([])
+    setPage(1)
     fetchPopular(1, false)
-  }, [token, fetchPopular])
+  }, [token, category, fetchPopular, isSearching])
 
   const searchMovies = useCallback(
     async (keyword) => {
@@ -86,9 +110,7 @@ export default function ElysiumMain() {
 
       try {
         const res = await fetch(
-          `${API_URL_BACKEND}/kinopoisk/search?keyword=${encodeURIComponent(
-            keyword
-          )}`,
+          `${API_URL_BACKEND}/kinopoisk/search?keyword=${encodeURIComponent(keyword)}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
 
@@ -136,6 +158,7 @@ export default function ElysiumMain() {
     setQuery('')
     setIsSearching(false)
     setFilter('ALL')
+    setCategory('MARVEL')
     fetchPopular(1, false)
   }
 
@@ -149,10 +172,12 @@ export default function ElysiumMain() {
     return movie.type === filter
   })
 
+  const categoryName = CATEGORIES.find((c) => c.value === category)?.label || 'Киновселенная MARVEL'
+
   return (
     <div className="main-body">
       <h1 className="main-title">
-        {isSearching ? 'Результаты поиска' : 'Киновселенная MARVEL'}
+        {isSearching ? 'Результаты поиска' : categoryName}
       </h1>
 
       <div className="main-searchbox">
@@ -175,19 +200,38 @@ export default function ElysiumMain() {
         )}
       </div>
 
-      <div className="main-filters">
-        {FILTERS.map((f) => (
-          <button
-            key={f.value}
-            className={
-              filter === f.value ? 'main-filterbtn active' : 'main-filterbtn'
-            }
-            onClick={() => setFilter(f.value)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {/* Фильтры категорий и типов — скрываем при поиске */}
+      {!isSearching && (
+        <>
+          <div className="main-category-row">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="main-select"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="main-filters">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                className={
+                  filter === f.value ? 'main-filterbtn active' : 'main-filterbtn'
+                }
+                onClick={() => setFilter(f.value)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {loading && <MovieGridSkeleton count={20} />}
       {error && <p className="main-state">{error}</p>}
@@ -199,13 +243,14 @@ export default function ElysiumMain() {
               <Link
                 key={movie.kinopoiskId || movie.filmId}
                 to={`/elysium/movie/${movie.kinopoiskId || movie.filmId}`}
-                className={`main-moviecard status-${movie.status || 'not_watched'}`} // <-- Добавили класс
+                className={`main-moviecard status-${movie.status || 'not_watched'}`}
               >
                 <img
-                  src={movie.posterUrlPreview}
+                  src={movie.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
                   alt={getMovieName(movie)}
                   className="main-movieposter"
                   loading="lazy"
+                  onError={(e) => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
                 />
                 <div className="main-movieinfo">
                   <p className="main-moviename">{getMovieName(movie)}</p>
@@ -233,20 +278,13 @@ export default function ElysiumMain() {
         </>
       )}
 
-      {!loading &&
-        !error &&
-        filteredMovies.length === 0 &&
-        movies.length > 0 && (
-          <p className="main-state">В этой категории ничего нет</p>
-        )}
+      {!loading && !error && filteredMovies.length === 0 && movies.length > 0 && (
+        <p className="main-state">В этой категории ничего нет</p>
+      )}
 
-      {!loading &&
-        !error &&
-        movies.length === 0 &&
-        isSearching &&
-        query.trim() && (
-          <p className="main-state">Ничего не найдено</p>
-        )}
+      {!loading && !error && movies.length === 0 && isSearching && query.trim() && (
+        <p className="main-state">Ничего не найдено</p>
+      )}
 
       {!loading && !error && movies.length === 0 && !isSearching && (
         <p className="main-state">Фильмов пока нет</p>

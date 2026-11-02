@@ -584,6 +584,31 @@ body {
   box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
 }
 
+.main-category-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.main-select {
+  padding: 10px 15px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dop);
+  background: var(--middle);
+  border: 2px solid rgb(199, 0, 0);
+  border-radius: 10px;
+  outline: none;
+  cursor: pointer;
+  min-width: 300px;
+  max-width: 500px;
+}
+
+.main-select option {
+  background: var(--middle);
+  color: var(--dop);
+}
+
 /* ________________MovieDetail_______________ */
 .moviedetail-moviecard {
   background-color: rgba(199, 0, 0, 0.24);
