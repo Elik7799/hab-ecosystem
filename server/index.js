@@ -1801,6 +1801,7 @@ const kinopoiskHeaders = {
 app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
   const page = parseInt(req.query.page) || 1
   const category = req.query.category || 'MARVEL'
+  const typeFilter = req.query.type || 'ALL'
   const userId = req.user.id
 
   try {
@@ -1809,11 +1810,9 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       const limit = parseInt(req.query.limit) || 20
       const offset = (page - 1) * limit
 
-      const countResult = await pool.query('SELECT COUNT(*) FROM main_movies')
-      const total = parseInt(countResult.rows[0].count)
-
-      const result = await pool.query(
-        `SELECT 
+      let countQuery = 'SELECT COUNT(*) FROM main_movies mm JOIN movies m ON m.id = mm.movie_id'
+      let dataQuery = `
+        SELECT 
           m.kinopoisk_id AS "kinopoiskId",
           m.name_ru AS "nameRu",
           m.name_en AS "nameEn",
@@ -1831,10 +1830,24 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
          FROM main_movies mm
          JOIN movies m ON m.id = mm.movie_id
          LEFT JOIN user_movies um ON um.movie_id = m.kinopoisk_id AND um.user_id = $3
-         ORDER BY mm.position ASC
-         LIMIT $1 OFFSET $2`,
-        [limit, offset, userId]
-      )
+      `
+      const params = [limit, offset, userId]
+      let countParams = []
+
+      // Добавляем фильтр по типу, если выбран не "ALL"
+      if (typeFilter !== 'ALL') {
+        dataQuery += ` WHERE m.type = $4`
+        countQuery += ` WHERE m.type = $1`
+        params.push(typeFilter)
+        countParams.push(typeFilter)
+      }
+
+      dataQuery += ` ORDER BY mm.position ASC LIMIT $1 OFFSET $2`
+
+      const countResult = await pool.query(countQuery, countParams)
+      const total = parseInt(countResult.rows[0].count)
+
+      const result = await pool.query(dataQuery, params)
 
       return res.json({
         items: result.rows,
@@ -1846,7 +1859,9 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       })
     }
 
-    // Иначе идем в API Кинопоиска
+    // Для API-категорий (TOP_250 и т.д.)
+    // В API Кинопоиска фильтр по типу пока не поддерживается в этом эндпоинте, 
+    // поэтому мы загружаем страницу и фильтруем на клиенте (см. фронтенд)
     const response = await fetch(
       `https://kinopoiskapiunofficial.tech/api/v2.2/films/collections?type=${category}&page=${page}`,
       { headers: kinopoiskHeaders }
@@ -1859,7 +1874,7 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
     const data = await response.json()
     const films = data.items || []
     
-    // Сохраняем фильмы в базу, чтобы потом отдавать их с нашим статусом
+    // Сохраняем фильмы в базу
     const filmIds = []
     for (const film of films) {
       await saveMovieToDb({
@@ -1880,7 +1895,7 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       filmIds.push(film.kinopoiskId)
     }
 
-    // Получаем статусы пользователя для этих фильмов
+    // Получаем статусы пользователя
     const statuses = {}
     if (filmIds.length > 0) {
       const statusResult = await pool.query(
@@ -1892,10 +1907,9 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       })
     }
 
-    // Добавляем статусы к каждому фильму
     const items = films.map((film) => ({
       ...film,
-      kinopoiskId: film.kinopoiskId,
+      kinopoisId: film.kinopoiskId,
       status: statuses[film.kinopoiskId] || 'not_watched',
     }))
 
@@ -2849,7 +2863,7 @@ async function checkAndUpdateOnStartup() {
 }
 
 // Проверяем при старте сервера (через 5 секунд, чтобы БД успела подключиться)
-setTimeout(checkAndUpdateOnStartup, 15000)
+setTimeout(checkAndUpdateOnStartup, 7500)
 
 httpServer.listen(process.env.PORT, () => {
   console.log(`Сервер запущен на порту ${process.env.PORT}`)

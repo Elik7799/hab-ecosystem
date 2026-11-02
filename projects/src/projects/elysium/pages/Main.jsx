@@ -52,8 +52,9 @@ export default function ElysiumMain() {
       setError('')
 
       try {
+        // Передаем category и type (filter) в запросе
         const res = await fetch(
-          `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}&category=${category}`,
+          `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}&category=${category}&type=${filter}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
 
@@ -61,10 +62,17 @@ export default function ElysiumMain() {
 
         const data = await res.json()
 
+        // Для API-категорий (TOP_250 и т.д.) фильтрация по типу происходит на клиенте,
+        // так как API не поддерживает type в collections.
+        let items = data.items || []
+        if (category !== 'MARVEL' && filter !== 'ALL') {
+          items = items.filter((m) => m.type === filter)
+        }
+
         if (append) {
-          setMovies((prev) => [...prev, ...(data.items || [])])
+          setMovies((prev) => [...prev, ...items])
         } else {
-          setMovies(data.items || [])
+          setMovies(items)
         }
 
         setPage(data.page || pageNum)
@@ -79,16 +87,16 @@ export default function ElysiumMain() {
         setLoadingMore(false)
       }
     },
-    [token, category]
+    [token, category, filter]
   )
 
-  // Сброс при смене категории
+  // Сброс при смене категории или фильтра
   useEffect(() => {
     if (!token || isSearching) return
     setMovies([])
     setPage(1)
     fetchPopular(1, false)
-  }, [token, category, fetchPopular, isSearching])
+  }, [token, category, filter, fetchPopular, isSearching])
 
   const searchMovies = useCallback(
     async (keyword) => {
@@ -156,11 +164,6 @@ export default function ElysiumMain() {
     fetchPopular(page + 1, true)
   }
 
-  const filteredMovies = movies.filter((movie) => {
-    if (filter === 'ALL') return true
-    return movie.type === filter
-  })
-
   const categoryName = CATEGORIES.find((c) => c.value === category)?.label || 'Киновселенная MARVEL'
 
   return (
@@ -189,7 +192,6 @@ export default function ElysiumMain() {
         )}
       </div>
 
-      {/* Фильтры категорий и типов — скрываем при поиске */}
       {!isSearching && (
         <>
           <div className="main-category-row">
@@ -225,10 +227,10 @@ export default function ElysiumMain() {
       {loading && <MovieGridSkeleton count={20} />}
       {error && <p className="main-state">{error}</p>}
 
-      {!loading && !error && filteredMovies.length > 0 && (
+      {!loading && !error && movies.length > 0 && (
         <>
           <div className="main-moviesgrid">
-            {filteredMovies.map((movie) => (
+            {movies.map((movie) => (
               <Link
                 key={movie.kinopoiskId || movie.filmId}
                 to={`/elysium/movie/${movie.kinopoiskId || movie.filmId}`}
@@ -267,16 +269,12 @@ export default function ElysiumMain() {
         </>
       )}
 
-      {!loading && !error && filteredMovies.length === 0 && movies.length > 0 && (
-        <p className="main-state">В этой категории ничего нет</p>
-      )}
-
       {!loading && !error && movies.length === 0 && isSearching && query.trim() && (
         <p className="main-state">Ничего не найдено</p>
       )}
 
       {!loading && !error && movies.length === 0 && !isSearching && (
-        <p className="main-state">Фильмов пока нет</p>
+        <p className="main-state">В этой категории ничего нет</p>
       )}
     </div>
   )
