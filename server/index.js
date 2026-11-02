@@ -2591,6 +2591,7 @@ async function updateOldMovies() {
   logUpdate('Проверяю фильмы для обновления...')
 
   try {
+    // Собираем фильмы по "локальному" обновлению (старые по last_checked_at)
     const result = await pool.query(
       `SELECT kinopoisk_id
        FROM movies
@@ -2610,6 +2611,7 @@ async function updateOldMovies() {
     let failed = 0
     let unchanged = 0
     let stopped = false
+    let processedIds = [] // Собираем ID, которые прошли обновление
 
     for (const row of result.rows) {
       try {
@@ -2638,6 +2640,9 @@ async function updateOldMovies() {
           continue
         }
 
+        // Запоминаем успешные ID
+        processedIds.push(row.kinopoisk_id)
+
         if (changed.length === 0) {
           unchanged++
           logUpdate(`  ○ ${row.kinopoisk_id} — без изменений`)
@@ -2656,6 +2661,16 @@ async function updateOldMovies() {
       await new Promise((r) => setTimeout(r, UPDATE_DELAY_MS))
     }
 
+    // ── ГЛОБАЛЬНОЕ ОБНОВЛЕНИЕ ДАТ ──────────────────────────────────
+    // Проставляем last_checked_at_all для всех, кто был в пачке
+    if (processedIds.length > 0) {
+      await pool.query(
+        `UPDATE movies SET last_checked_at_all = NOW() WHERE kinopoisk_id = ANY($1)`,
+        [processedIds]
+      )
+      logUpdate(`📅 Отмечено глобальное обновление для ${processedIds.length} фильмов`)
+    }
+
     logUpdate('───────────────────────────────────────')
     logUpdate(`✅ Обновлено: ${success}`)
     logUpdate(`○  Без изменений: ${unchanged}`)
@@ -2669,34 +2684,33 @@ async function updateOldMovies() {
   }
 
   await cleanupOldNotifications()
-
   await cleanupOldMatchRooms()
 }
 
-// Проверяем, прошло ли 12 часов с последнего обновления
 async function checkAndUpdateOnStartup() {
   try {
+    // Смотрим на поле last_checked_at_all
     const result = await pool.query(
-      `SELECT MAX(last_checked_at) as last_update FROM movies`
+      `SELECT MAX(last_checked_at_all) as last_full_update FROM movies`
     )
-
-    const lastUpdate = result.rows[0]?.last_update
+    
+    const lastFullUpdate = result.rows[0]?.last_full_update
     const now = new Date()
-
-    // Если обновлений не было вообще, или прошло > 12 часов
-    if (!lastUpdate) {
-      console.log('🕒 Первичное обновление базы...')
+    
+    // Если глобального обновления не было вообще
+    if (!lastFullUpdate) {
+      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю...')
       updateOldMovies()
       return
     }
 
-    const diffHours = (now - new Date(lastUpdate)) / (1000 * 60 * 60)
+    const diffHours = (now - new Date(lastFullUpdate)) / (1000 * 60 * 60)
 
     if (diffHours >= 8) {
-      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. с последнего обновления. Запускаю...`)
+      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. с последнего глобального обновления. Запускаю...`)
       updateOldMovies()
     } else {
-      console.log(`🕒 Последнее обновление было ${Math.round(diffHours)} ч. назад. Пропускаю.`)
+      console.log(`🕒 Глобальное обновление было ${Math.round(diffHours)} ч. назад. Пропускаю.`)
     }
   } catch (err) {
     console.error('Ошибка проверки времени обновления:', err)
