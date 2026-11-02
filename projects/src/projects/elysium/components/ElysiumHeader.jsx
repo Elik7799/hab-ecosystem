@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv } from 'lucide-react'
+import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv, Film } from 'lucide-react'
 import { useAuth } from '../context/ElysiumAuthContext'
 import ElysiumNotificationsBell from './ElysiumNotificationsBell'
 import { useTheme } from '../../../context/ThemeContext'
@@ -68,6 +68,10 @@ export default function ElysiumHeader() {
           <>
             <NavLink to="/elysium/my-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
               <Tv />
+            </NavLink>
+
+            <NavLink to="/elysium/my-movies" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
+              <Film />
             </NavLink>
 
             <NavLink
@@ -158,6 +162,16 @@ export default function ElysiumHeader() {
                 <Tv size={20} />
                 <span>Мои сериалы</span>
               </NavLink>
+
+              <NavLink to="/elysium/my-movies" className={({ isActive }) =>
+                isActive
+                  ? 'header-mobile-item header-mobile-item-active'
+                  : 'header-mobile-item'
+              }>
+                <Film size={20} />
+                <span>Мои фильмы</span>
+              </NavLink>
+
               <NavLink
                 to="/elysium/friends"
                 className={({ isActive }) =>
@@ -223,7 +237,8 @@ export default function ElysiumHeader() {
             </NavLink>
           )}
         </div>
-      )}
-    </nav>
+      )
+      }
+    </nav >
   )
 }

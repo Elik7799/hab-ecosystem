@@ -3,21 +3,30 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
-import { Check, Tv, ArrowDownUp } from 'lucide-react'
+import { Check, ArrowDownUp, Play, Star } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'По названию (А-Я)' },
   { value: 'name_desc', label: 'По названию (Я-А)' },
-  { value: 'year_desc', label: 'По году сериала (новые-старые)' },
-  { value: 'year_asc', label: 'По году сериала (старые-новые)' },
+  { value: 'year_desc', label: 'По году (новые-старые)' },
+  { value: 'year_asc', label: 'По году (старые-новые)' },
   { value: 'ep_date_desc', label: 'По дате выхода серии (новые-старые)' },
   { value: 'ep_date_asc', label: 'По дате выхода серии (старые-новые)' },
 ]
 
+const PLANNED_SORT_OPTIONS = [
+  { value: 'name_asc', label: 'По названию (А-Я)' },
+  { value: 'name_desc', label: 'По названию (Я-А)' },
+  { value: 'year_desc', label: 'По году (новые-старые)' },
+  { value: 'year_asc', label: 'По году (старые-новые)' },
+]
+
 export default function ElysiumMySeries() {
   const { token } = useAuth()
+  
+  // Верхний список (Смотрю)
   const [series, setSeries] = useState([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState(null)
@@ -25,6 +34,13 @@ export default function ElysiumMySeries() {
     () => localStorage.getItem('my-series-sort') || 'name_asc'
   )
 
+  // Нижний список (Буду смотреть)
+  const [plannedSeries, setPlannedSeries] = useState([])
+  const [plannedSortBy, setPlannedSortBy] = useState(
+    () => localStorage.getItem('my-planned-series-sort') || 'name_asc'
+  )
+
+  // Загрузка верхнего списка
   const fetchSeries = async () => {
     if (!token) return
     try {
@@ -38,20 +54,45 @@ export default function ElysiumMySeries() {
     } catch (err) {
       console.error(err)
       showError('Ошибка загрузки сериалов')
-    } finally {
-      setLoading(false)
     }
   }
 
+  // Загрузка нижнего списка
+  const fetchPlannedSeries = async () => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_URL_BACKEND}/users/me/watchlist-series`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPlannedSeries(data.series || [])
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const loadAll = async () => {
+    setLoading(true)
+    await Promise.all([fetchSeries(), fetchPlannedSeries()])
+    setLoading(false)
+  }
+
   useEffect(() => {
-    fetchSeries()
+    loadAll()
   }, [token])
 
-  // Сохраняем сортировку при изменении
+  // Сохранение сортировок
   useEffect(() => {
     localStorage.setItem('my-series-sort', sortBy)
   }, [sortBy])
 
+  useEffect(() => {
+    localStorage.setItem('my-planned-series-sort', plannedSortBy)
+  }, [plannedSortBy])
+
+  // Отметка серии (верхний список)
   const handleMarkWatched = async (show, season, episode) => {
     setUpdatingId(show.kinopoiskId)
     try {
@@ -70,8 +111,8 @@ export default function ElysiumMySeries() {
       })
 
       if (res.ok) {
-        showSuccess(`Серия ${season}x${episode} отмечена как просмотренная!`)
-        await fetchSeries() // Обновляем данные, чтобы получить новую "следующую серию"
+        showSuccess(`Серия ${season}x${episode} отмечена!`)
+        await fetchSeries()
       } else {
         showError('Не удалось отметить серию')
       }
@@ -83,17 +124,51 @@ export default function ElysiumMySeries() {
     }
   }
 
-  // Функция сортировки
+  // Перевод в статус "Смотрю" (нижний список)
+  const handleStartWatching = async (show) => {
+    setUpdatingId(show.kinopoiskId)
+    try {
+      const res = await fetch(`${API_URL_BACKEND}/movies/${show.kinopoiskId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: 'watching' }),
+      })
+
+      if (res.ok) {
+        showSuccess(`«${getMovieName(show)}» добавлен в «Смотрю»`)
+        // Обновляем оба списка
+        await Promise.all([fetchSeries(), fetchPlannedSeries()])
+      } else {
+        showError('Не удалось изменить статус')
+      }
+    } catch (err) {
+      console.error(err)
+      showError('Ошибка')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
+  // Сортировка верхнего списка
   const sortedSeries = [...series].sort((a, b) => {
     switch (sortBy) {
       case 'name_asc':
-        return getMovieName(a).localeCompare(getMovieName(b))
+        return getMovieName(a).localeCompare(getMovieName(b), 'ru')
       case 'name_desc':
-        return getMovieName(b).localeCompare(getMovieName(a))
-      case 'year_desc':
-        return (b.year || 0) - (a.year || 0)
-      case 'year_asc':
-        return (a.year || 0) - (b.year || 0)
+        return getMovieName(b).localeCompare(getMovieName(a), 'ru')
+      case 'year_desc': {
+        const diff = (b.year || 0) - (a.year || 0)
+        if (diff !== 0) return diff
+        return getMovieName(a).localeCompare(getMovieName(b), 'ru')
+      }
+      case 'year_asc': {
+        const diff = (a.year || 0) - (b.year || 0)
+        if (diff !== 0) return diff
+        return getMovieName(a).localeCompare(getMovieName(b), 'ru')
+      }
       case 'ep_date_desc': {
         const dateA = a.nextEpisodeDate ? new Date(a.nextEpisodeDate).getTime() : 0
         const dateB = b.nextEpisodeDate ? new Date(b.nextEpisodeDate).getTime() : 0
@@ -103,6 +178,28 @@ export default function ElysiumMySeries() {
         const dateA = a.nextEpisodeDate ? new Date(a.nextEpisodeDate).getTime() : Infinity
         const dateB = b.nextEpisodeDate ? new Date(b.nextEpisodeDate).getTime() : Infinity
         return dateA - dateB
+      }
+      default:
+        return 0
+    }
+  })
+
+  // Сортировка нижнего списка
+  const sortedPlanned = [...plannedSeries].sort((a, b) => {
+    switch (plannedSortBy) {
+      case 'name_asc':
+        return getMovieName(a).localeCompare(getMovieName(b), 'ru')
+      case 'name_desc':
+        return getMovieName(b).localeCompare(getMovieName(a), 'ru')
+      case 'year_desc': {
+        const diff = (b.year || 0) - (a.year || 0)
+        if (diff !== 0) return diff
+        return getMovieName(a).localeCompare(getMovieName(b), 'ru')
+      }
+      case 'year_asc': {
+        const diff = (a.year || 0) - (b.year || 0)
+        if (diff !== 0) return diff
+        return getMovieName(a).localeCompare(getMovieName(b), 'ru')
       }
       default:
         return 0
@@ -120,9 +217,10 @@ export default function ElysiumMySeries() {
 
   return (
     <div className="my-series-body">
+      {/* ============ ВЕРХНИЙ БЛОК: СМОТРЮ ============ */}
       <div className="my-series-header-row">
         <div>
-          <h1 className="my-series-title">Мои сериалы</h1>
+          <h1 className="my-series-title">Смотрю сейчас</h1>
           <p className="my-series-subtitle">Сериалы, которые вы сейчас смотрите</p>
         </div>
 
@@ -144,10 +242,7 @@ export default function ElysiumMySeries() {
 
       {series.length === 0 ? (
         <p className="my-series-empty">
-          У вас пока нет сериалов в статусе «Смотрю».{' '}
-          <Link to="/elysium" className="my-series-link">
-            Найти сериал
-          </Link>
+          У вас пока нет сериалов в статусе «Смотрю».
         </p>
       ) : (
         <div className="my-series-list">
@@ -205,6 +300,79 @@ export default function ElysiumMySeries() {
                   {show.watchedCount} из {show.totalAired}
                 </span>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ============ НИЖНИЙ БЛОК: БУДУ СМОТРЕТЬ ============ */}
+      <div className="my-series-header-row my-series-header-row-planned">
+        <div>
+          <h2 className="my-series-title my-series-title-planned">Буду смотреть</h2>
+          <p className="my-series-subtitle">Сериалы, которые вы отложили на потом</p>
+        </div>
+
+        <div className="my-series-sort">
+          <ArrowDownUp size={16} />
+          <select
+            value={plannedSortBy}
+            onChange={(e) => setPlannedSortBy(e.target.value)}
+            className="my-series-sort-select"
+          >
+            {PLANNED_SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {plannedSeries.length === 0 ? (
+        <p className="my-series-empty">
+          У вас пока нет сериалов в статусе «Буду смотреть».
+        </p>
+      ) : (
+        <div className="my-series-list">
+          {sortedPlanned.map((show) => (
+            <div key={show.kinopoiskId} className="my-series-card my-series-card-planned">
+              <Link to={`/elysium/movie/${show.kinopoiskId}`}>
+                <img
+                  src={show.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
+                  alt={getMovieName(show)}
+                  className="my-series-poster"
+                  onError={(e) => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
+                />
+              </Link>
+
+              <div className="my-series-info">
+                <Link to={`/elysium/movie/${show.kinopoiskId}`} className="my-series-name">
+                  {getMovieName(show)}
+                </Link>
+                {show.nameOriginal && (
+                  <p className="my-series-original">{show.nameOriginal}</p>
+                )}
+                <div className="my-series-meta-row">
+                  {show.year && <span>{show.year}</span>}
+                  {show.ratingKinopoisk && (
+                    <span className="my-series-rating">
+                      <Star size={12} /> {show.ratingKinopoisk}
+                    </span>
+                  )}
+                  {show.episodesCount > 0 && (
+                    <span>{show.episodesCount} серий</span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                className="my-series-start-btn"
+                onClick={() => handleStartWatching(show)}
+                disabled={updatingId === show.kinopoiskId}
+                title="Начать смотреть"
+              >
+                <Play size={18} />
+              </button>
             </div>
           ))}
         </div>

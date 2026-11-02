@@ -895,6 +895,71 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
   }
 })
 
+app.get('/api/users/me/watchlist-series', authMiddleware, async (req, res) => {
+  const userId = req.user.id
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+        m.kinopoisk_id AS "kinopoiskId",
+        m.name_ru AS "nameRu",
+        m.name_en AS "nameEn",
+        m.name_original AS "nameOriginal",
+        m.year,
+        m.type,
+        m.poster_url_preview AS "posterUrlPreview",
+        m.rating_kinopoisk AS "ratingKinopoisk",
+        m.rating_imdb AS "ratingImdb",
+        (SELECT COUNT(*) FROM seasons WHERE movie_id = m.kinopoisk_id AND (release_date <= NOW() OR release_date IS NULL)) AS "episodesCount"
+       FROM user_movies um
+       JOIN movies m ON m.kinopoisk_id = um.movie_id
+       WHERE um.user_id = $1 
+         AND um.status = 'want_to_watch'
+         AND m.type IN ('TV_SERIES', 'MINI_SERIES', 'TV_SHOW')
+       ORDER BY um.id DESC`,
+      [userId]
+    )
+
+    res.json({ series: result.rows })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки списка сериалов' })
+  }
+})
+
+app.get('/api/users/me/watchlist', authMiddleware, async (req, res) => {
+  const userId = req.user.id
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+        m.kinopoisk_id AS "kinopoiskId",
+        m.name_ru AS "nameRu",
+        m.name_en AS "nameEn",
+        m.name_original AS "nameOriginal",
+        m.year,
+        m.type,
+        m.poster_url_preview AS "posterUrlPreview",
+        m.rating_kinopoisk AS "ratingKinopoisk",
+        m.rating_imdb AS "ratingImdb",
+        m.film_length AS "filmLength",
+        m.description
+       FROM user_movies um
+       JOIN movies m ON m.kinopoisk_id = um.movie_id
+       WHERE um.user_id = $1 
+         AND um.status = 'want_to_watch'
+         AND m.type IN ('FILM', 'VIDEO')
+       ORDER BY um.id DESC`,
+      [userId]
+    )
+
+    res.json({ movies: result.rows })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки списка фильмов' })
+  }
+})
+
 // ───────────────────────── PROFILE ─────────────────────────
 
 app.get('/api/users/:id', authMiddleware, async (req, res) => {

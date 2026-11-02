@@ -2567,6 +2567,76 @@ body {
   background: var(--middle);
   color: var(--dop);
 }
+
+/* Разделитель и заголовок нижнего блока */
+.my-series-header-row-planned {
+  margin-top: 50px;
+  padding-top: 30px;
+  border-top: 2px solid var(--dop);
+}
+
+.my-series-title-planned {
+  color: rgb(199, 0, 0);
+}
+
+/* Карточка запланированного сериала */
+.my-series-card-planned {
+  opacity: 0.95;
+}
+
+.my-series-original {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-series-meta-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 14px;
+  color: var(--dop);
+  font-weight: 500;
+}
+
+.my-series-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: rgb(199, 0, 0);
+  font-weight: 600;
+}
+
+/* Кнопка "Начать смотреть" */
+.my-series-start-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(199, 0, 0, 0.1);
+  border: 2px solid rgb(199, 0, 0);
+  color: rgb(199, 0, 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.my-series-start-btn:hover:not(:disabled) {
+  background: rgb(199, 0, 0);
+  color: white;
+  transform: scale(1.05);
+}
+
+.my-series-start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 /* ________________Import_______________ */
 
 .import-body {
@@ -2689,4 +2759,123 @@ body {
   border-radius: 8px;
   text-decoration: none;
   font-weight: 600;
+}
+
+/* ________________My Movies_______________ */
+
+.my-movies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.my-movies-card {
+  display: flex;
+  gap: 15px;
+  background: var(--middle);
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid var(--dop);
+  align-items: center;
+  box-shadow: 0 2px 8px var(--dop);
+  transition: transform 0.2s, box-shadow 0.2s;
+  min-height: 110px;
+}
+
+.my-movies-card:hover {
+  box-shadow: 0 4px 12px var(--dop);
+}
+
+.my-movies-poster {
+  width: 75px;
+  height: auto;
+  min-height: 100px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  object-fit: contain;
+  background-color: var(--leader);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.my-movies-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.my-movies-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--dop);
+  text-decoration: none;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-movies-name:hover {
+  color: rgb(199, 0, 0);
+}
+
+.my-movies-original {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-movies-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 14px;
+  color: var(--dop);
+}
+
+.my-movies-year {
+  font-weight: 600;
+}
+
+.my-movies-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #888;
+}
+
+.my-movies-rating {
+  color: rgb(199, 0, 0);
+  font-weight: 600;
+}
+
+.my-movies-watched-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid #22c55e;
+  color: #22c55e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.my-movies-watched-btn:hover:not(:disabled) {
+  background: #22c55e;
+  color: white;
+  transform: scale(1.05);
+}
+
+.my-movies-watched-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
