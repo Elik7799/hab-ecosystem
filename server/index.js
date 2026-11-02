@@ -164,6 +164,9 @@ function authMiddleware(req, res, next) {
 async function saveMovieToDb(movie) {
   if (!movie || !movie.kinopoiskId) return null
 
+  // Вспомогательная функция для замены null на 'Отсутствует'
+  const notEmpty = (val) => (val === null || val === undefined ? 'Отсутствует' : val)
+
   try {
     const result = await pool.query(
       `INSERT INTO movies (
@@ -189,18 +192,18 @@ async function saveMovieToDb(movie) {
       RETURNING *`,
       [
         movie.kinopoiskId,
-        movie.nameRu || null,
-        movie.nameEn || null,
-        movie.nameOriginal || null,
-        movie.year || null,
-        movie.type || null,
-        movie.posterUrl || null,
-        movie.posterUrlPreview || null,
-        movie.ratingKinopoisk || null,
-        movie.ratingImdb || null,
-        movie.description || null,
-        movie.filmLength || null,
-        movie.slogan || null,
+        notEmpty(movie.nameRu),
+        notEmpty(movie.nameEn),
+        notEmpty(movie.nameOriginal),
+        notEmpty(movie.year),
+        notEmpty(movie.type),
+        notEmpty(movie.posterUrl),
+        notEmpty(movie.posterUrlPreview),
+        notEmpty(movie.ratingKinopoisk),
+        notEmpty(movie.ratingImdb),
+        notEmpty(movie.description),
+        notEmpty(movie.filmLength),
+        notEmpty(movie.slogan),
       ]
     )
     return result.rows[0]
@@ -2124,7 +2127,8 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
   const { id } = req.params
 
   try {
-    const result = await pool.query(
+    // 1. Пытаемся достать фильм из базы
+    let result = await pool.query(
       `SELECT 
         kinopoisk_id AS "kinopoiskId",
         name_ru AS "nameRu",
@@ -2142,6 +2146,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
       [id]
     )
 
+    // 2. Если фильма нет вообще — идем в API
     if (result.rows.length === 0) {
       const response = await fetch(`${KINOPOISK_BASE}${id}`, {
         headers: kinopoiskHeaders,
@@ -2154,8 +2159,38 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
       return res.json(movie)
     }
 
+    // 3. Если фильм есть, но в каких-то полях есть NULL — обновляем данные
+    const row = result.rows[0]
+    const hasNulls = Object.values(row).some((val) => val === null)
+
+    if (hasNulls) {
+      console.log(`🔄 Найдены NULL в данных для фильма ${id}. Запускаю обновление...`)
+      await updateOneMovie(id)
+      
+      // Перечитываем обновленные данные из базы
+      result = await pool.query(
+        `SELECT 
+          kinopoisk_id AS "kinopoiskId",
+          name_ru AS "nameRu",
+          name_en AS "nameEn",
+          name_original AS "nameOriginal",
+          year, type,
+          poster_url AS "posterUrl",
+          poster_url_preview AS "posterUrlPreview",
+          rating_kinopoisk AS "ratingKinopoisk",
+          rating_imdb AS "ratingImdb",
+          description,
+          film_length AS "filmLength",
+          slogan
+         FROM movies WHERE kinopoisk_id = $1`,
+        [id]
+      )
+    }
+
+    // 4. Формируем ответ
     const movie = result.rows[0]
 
+    // 5. Загружаем жанры и страны
     const genresResult = await pool.query(
       'SELECT genre FROM movie_genres WHERE movie_id = $1 ORDER BY id',
       [id]
@@ -2166,6 +2201,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
       [id]
     )
 
+    // 6. Если жанров или стран нет — идем в API за ними
     if (genresResult.rows.length === 0 || countriesResult.rows.length === 0) {
       try {
         const response = await fetch(`${KINOPOISK_BASE}${id}`, {
@@ -2174,6 +2210,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
         if (response.ok) {
           const apiMovie = await response.json()
 
+          // Сохраняем жанры
           if (apiMovie.genres) {
             for (const g of apiMovie.genres) {
               await pool.query(
@@ -2184,6 +2221,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
             }
           }
 
+          // Сохраняем страны
           if (apiMovie.countries) {
             for (const c of apiMovie.countries) {
               await pool.query(
@@ -2194,6 +2232,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
             }
           }
 
+          // Перечитываем жанры и страны из базы
           const newGenres = await pool.query(
             'SELECT genre FROM movie_genres WHERE movie_id = $1',
             [id]
@@ -2390,6 +2429,10 @@ async function updateOneMovie(kinopoiskId) {
     const oldNorm = normalizeForCompare(current[dbField], dbField)
     const newRaw = fresh[apiField]
     const newNorm = normalizeForCompare(newRaw, dbField)
+
+    // Если из API пришел null, а у нас 'Отсутствует' (или наоборот) — это не изменение
+    if (newNorm === null && oldNorm === 'Отсутствует') continue
+    if (oldNorm === null && newNorm === 'Отсутствует') continue
 
     if (oldNorm === newNorm) continue
 
