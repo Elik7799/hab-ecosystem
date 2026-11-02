@@ -13,8 +13,37 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem('user')
 
     if (savedToken && savedUser) {
-      setToken(savedToken)
-      setUser(JSON.parse(savedUser))
+      try {
+        // 1. Достаем payload из JWT (вторая часть токена между точками)
+        // JWT имеет формат: header.payload.signature
+        const payloadBase64 = savedToken.split('.')[1]
+        
+        // 2. Декодируем base64 (используем atob, который работает в браузере)
+        // Добавляем padding, если его нет (atob требует длину, кратную 4)
+        const decodedPayload = JSON.parse(atob(payloadBase64))
+
+        // 3. Проверяем срок действия (exp хранится в секундах)
+        const isExpired = decodedPayload.exp * 1000 < Date.now()
+
+        if (isExpired) {
+          // Токен просрочен — очищаем
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+          setToken(null)
+          setUser(null)
+        } else {
+          // Токен валиден
+          setToken(savedToken)
+          setUser(JSON.parse(savedUser))
+        }
+      } catch (error) {
+        // Если токен битый или не JSON — очищаем
+        console.error('Ошибка проверки токена:', error)
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        setToken(null)
+        setUser(null)
+      }
     }
     setLoading(false)
   }, [])

@@ -3,17 +3,28 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
-import { Check, Tv } from 'lucide-react'
+import { Check, Tv, ArrowDownUp } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
+
+const SORT_OPTIONS = [
+  { value: 'name_asc', label: 'По названию (А-Я)' },
+  { value: 'name_desc', label: 'По названию (Я-А)' },
+  { value: 'year_desc', label: 'По году сериала (новые-старые)' },
+  { value: 'year_asc', label: 'По году сериала (старые-новые)' },
+  { value: 'ep_date_desc', label: 'По дате выхода серии (новые-старые)' },
+  { value: 'ep_date_asc', label: 'По дате выхода серии (старые-новые)' },
+]
 
 export default function ElysiumMySeries() {
   const { token } = useAuth()
   const [series, setSeries] = useState([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState(null)
+  const [sortBy, setSortBy] = useState(
+    () => localStorage.getItem('my-series-sort') || 'name_asc'
+  )
 
-  // Выносим fetchSeries в отдельную функцию, чтобы вызывать её повторно
   const fetchSeries = async () => {
     if (!token) return
     try {
@@ -36,6 +47,11 @@ export default function ElysiumMySeries() {
     fetchSeries()
   }, [token])
 
+  // Сохраняем сортировку при изменении
+  useEffect(() => {
+    localStorage.setItem('my-series-sort', sortBy)
+  }, [sortBy])
+
   const handleMarkWatched = async (show, season, episode) => {
     setUpdatingId(show.kinopoiskId)
     try {
@@ -55,11 +71,7 @@ export default function ElysiumMySeries() {
 
       if (res.ok) {
         showSuccess(`Серия ${season}x${episode} отмечена как просмотренная!`)
-
-        // ВМЕСТО локального обновления — заново запрашиваем список с бэкенда.
-        // Это гарантирует, что мы получим актуальную "следующую серию".
-        // Бэкенд уже знает, что все серии просмотрены, и сам изменит статус.
-        await fetchSeries()
+        await fetchSeries() // Обновляем данные, чтобы получить новую "следующую серию"
       } else {
         showError('Не удалось отметить серию')
       }
@@ -70,6 +82,32 @@ export default function ElysiumMySeries() {
       setUpdatingId(null)
     }
   }
+
+  // Функция сортировки
+  const sortedSeries = [...series].sort((a, b) => {
+    switch (sortBy) {
+      case 'name_asc':
+        return getMovieName(a).localeCompare(getMovieName(b))
+      case 'name_desc':
+        return getMovieName(b).localeCompare(getMovieName(a))
+      case 'year_desc':
+        return (b.year || 0) - (a.year || 0)
+      case 'year_asc':
+        return (a.year || 0) - (b.year || 0)
+      case 'ep_date_desc': {
+        const dateA = a.nextEpisodeDate ? new Date(a.nextEpisodeDate).getTime() : 0
+        const dateB = b.nextEpisodeDate ? new Date(b.nextEpisodeDate).getTime() : 0
+        return dateB - dateA
+      }
+      case 'ep_date_asc': {
+        const dateA = a.nextEpisodeDate ? new Date(a.nextEpisodeDate).getTime() : Infinity
+        const dateB = b.nextEpisodeDate ? new Date(b.nextEpisodeDate).getTime() : Infinity
+        return dateA - dateB
+      }
+      default:
+        return 0
+    }
+  })
 
   if (loading) {
     return (
@@ -82,10 +120,27 @@ export default function ElysiumMySeries() {
 
   return (
     <div className="my-series-body">
-      <h1 className="my-series-title">Мои сериалы</h1>
-      <p className="my-series-subtitle">
-        Сериалы, которые вы сейчас смотрите
-      </p>
+      <div className="my-series-header-row">
+        <div>
+          <h1 className="my-series-title">Мои сериалы</h1>
+          <p className="my-series-subtitle">Сериалы, которые вы сейчас смотрите</p>
+        </div>
+
+        <div className="my-series-sort">
+          <ArrowDownUp size={16} />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="my-series-sort-select"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {series.length === 0 ? (
         <p className="my-series-empty">
@@ -96,7 +151,7 @@ export default function ElysiumMySeries() {
         </p>
       ) : (
         <div className="my-series-list">
-          {series.map((show) => (
+          {sortedSeries.map((show) => (
             <div key={show.kinopoiskId} className="my-series-card">
               <Link to={`/elysium/movie/${show.kinopoiskId}`}>
                 <img

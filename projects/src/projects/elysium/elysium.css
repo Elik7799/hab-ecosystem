@@ -2533,6 +2533,40 @@ body {
   border-color: rgba(46, 204, 113, 0.5);
 }
 
+.my-series-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.my-series-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--middle);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--dop);
+  color: var(--dop);
+}
+
+.my-series-sort-select {
+  background: transparent;
+  border: none;
+  color: var(--dop);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+
+.my-series-sort-select option {
+  background: var(--middle);
+  color: var(--dop);
+}
 /* ________________Import_______________ */
 
 .import-body {

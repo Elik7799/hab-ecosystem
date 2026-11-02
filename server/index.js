@@ -260,7 +260,7 @@ app.post('/api/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, name: user.name },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
     )
     res.json({
       token,
@@ -303,7 +303,7 @@ app.post('/api/import/upload', authMiddleware, upload.single('file'), async (req
     const formData = new FormData()
     formData.append('chat_id', CHAT_ID)
     formData.append('caption', `Новый импорт фильмов от пользователя #${userId}`)
-    
+
     // Используем Blob для правильной отправки бинарных данных
     const blob = new Blob([file.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     formData.append('document', blob, file.originalname)
@@ -820,13 +820,13 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
   const userId = req.user.id
 
   try {
-    // 1. Получаем все сериалы со статусом 'watching'
     const moviesResult = await pool.query(
       `SELECT 
         m.kinopoisk_id AS "kinopoiskId",
         m.name_ru AS "nameRu",
         m.name_en AS "nameEn",
-        m.poster_url_preview AS "posterUrlPreview"
+        m.poster_url_preview AS "posterUrlPreview",
+        m.year
        FROM user_movies um
        JOIN movies m ON m.kinopoisk_id = um.movie_id
        WHERE um.user_id = $1 AND um.status = 'watching'
@@ -837,16 +837,14 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
     const series = []
 
     for (const movie of moviesResult.rows) {
-      // 2. Для каждого сериала ищем все вышедшие серии
       const allAiredEpisodes = await pool.query(
-        `SELECT season_number, episode_number 
+        `SELECT season_number, episode_number, release_date
          FROM seasons 
          WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)
          ORDER BY season_number ASC, episode_number ASC`,
         [movie.kinopoiskId]
       )
 
-      // 3. Ищем просмотренные серии пользователя
       const watchedEpisodes = await pool.query(
         `SELECT season_number, episode_number 
          FROM user_episodes 
@@ -858,27 +856,24 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         watchedEpisodes.rows.map((e) => `${e.season_number}-${e.episode_number}`)
       )
 
-      // 4. Находим первую непросмотренную вышедшую серию
       let nextEpisode = null
       for (const ep of allAiredEpisodes.rows) {
         const key = `${ep.season_number}-${ep.episode_number}`
         if (!watchedSet.has(key)) {
           nextEpisode = ep
-          break // Нашли следующую серию для просмотра
+          break
         }
       }
 
-      // 5. Считаем, сколько осталось
-      const remaining = allAiredEpisodes.rows.length - watchedSet.size
-
-      // 6. Если есть nextEpisode, достаем его название
       let nextEpisodeName = null
+      let nextEpisodeDate = null
       if (nextEpisode) {
         const epDetails = await pool.query(
-          'SELECT name_ru FROM seasons WHERE movie_id = $1 AND season_number = $2 AND episode_number = $3',
+          'SELECT name_ru, release_date FROM seasons WHERE movie_id = $1 AND season_number = $2 AND episode_number = $3',
           [movie.kinopoiskId, nextEpisode.season_number, nextEpisode.episode_number]
         )
         nextEpisodeName = epDetails.rows[0]?.name_ru
+        nextEpisodeDate = nextEpisode.release_date
       }
 
       series.push({
@@ -886,7 +881,8 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         nextSeason: nextEpisode ? nextEpisode.season_number : null,
         nextEpisode: nextEpisode ? nextEpisode.episode_number : null,
         nextEpisodeName: nextEpisodeName,
-        remaining: remaining,
+        nextEpisodeDate: nextEpisodeDate, // <-- Добавили дату выхода
+        remaining: allAiredEpisodes.rows.length - watchedSet.size,
         totalAired: allAiredEpisodes.rows.length,
         watchedCount: watchedSet.size,
       })
@@ -2166,7 +2162,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
     if (hasNulls) {
       console.log(`🔄 Найдены NULL в данных для фильма ${id}. Запускаю обновление...`)
       await updateOneMovie(id)
-      
+
       // Перечитываем обновленные данные из базы
       result = await pool.query(
         `SELECT 
@@ -2683,10 +2679,10 @@ async function checkAndUpdateOnStartup() {
     const result = await pool.query(
       `SELECT MAX(last_checked_at) as last_update FROM movies`
     )
-    
+
     const lastUpdate = result.rows[0]?.last_update
     const now = new Date()
-    
+
     // Если обновлений не было вообще, или прошло > 12 часов
     if (!lastUpdate) {
       console.log('🕒 Первичное обновление базы...')
