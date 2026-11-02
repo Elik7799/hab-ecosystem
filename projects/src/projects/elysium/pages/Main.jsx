@@ -12,20 +12,9 @@ const CATEGORIES = [
   { value: 'MARVEL', label: 'Киновселенная MARVEL' },
   { value: 'TOP_POPULAR_ALL', label: 'Популярное (все)' },
   { value: 'TOP_POPULAR_MOVIES', label: 'Популярные фильмы' },
+  { value: 'POPULAR_SERIES', label: 'Популярные сериалы' },
   { value: 'TOP_250_TV_SHOWS', label: 'Топ 250 сериалов' },
   { value: 'TOP_250_MOVIES', label: 'Топ 250 фильмов' },
-  { value: 'VAMPIRE_THEME', label: 'Вампиры' },
-  { value: 'COMICS_THEME', label: 'Комиксы' },
-  { value: 'CLOSES_RELEASES', label: 'Скоро выйдут' },
-  { value: 'FAMILY', label: 'Семейное' },
-  { value: 'OSKAR_WINNERS_2021', label: 'Оскар 2021' },
-  { value: 'LOVE_THEME', label: 'Любовь' },
-  { value: 'ZOMBIE_THEME', label: 'Зомби' },
-  { value: 'CATASTROPHE_THEME', label: 'Катастрофы' },
-  { value: 'KIDS_ANIMATION_THEME', label: 'Детские мультфильмы' },
-  { value: 'POPULAR_SERIES', label: 'Популярные сериалы' },
-  { value: 'TOP_100_GREATEST_MOVIES_XXI', label: '100 лучших фильмов XXI' },
-  { value: 'PROGRAMMERS_THEME', label: 'Про программистов' },
 ]
 
 const FILTERS = [
