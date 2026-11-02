@@ -578,7 +578,7 @@ body {
 
 /* Бледно-синий (смотрю) */
 .main-moviecard.status-watching {
-  background-color: rgba(51, 153, 255, 0.05);
+  background-color: rgba(51, 153, 255, 0.15);
 }
 .main-moviecard.status-watching:hover {
   box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
@@ -879,7 +879,7 @@ body {
 
 /* Бледно-синий (смотрю) */
 .moviedetail-moviecard.status-watching {
-  background-color: rgba(51, 153, 255, 0.05);
+  background-color: rgba(51, 153, 255, 0.15);
 }
 .moviedetail-moviecard.status-watching:hover {
   box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
@@ -2109,7 +2109,7 @@ body {
 
 /* Бледно-синий (смотрю) */
 .profile-moviecard.status-watching {
-  background-color: rgba(51, 153, 255, 0.05);
+  background-color: rgba(51, 153, 255, 0.15);
 }
 .profile-moviecard.status-watching:hover {
   box-shadow: 0 4px 15px rgba(51, 153, 255, 0.15);
@@ -2535,7 +2535,7 @@ body {
 
 .my-series-header-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 15px;
