@@ -66,11 +66,11 @@ export default function ElysiumImport() {
 
       <div className="import-instruction">
         <h2>Инструкция</h2>
-        <p>Для импорта ваших фильмов подготовьте файл в формате <strong>.xlsx</strong> (Excel 97-2003).</p>
+        <p>Для импорта ваших фильмов подготовьте файл в формате <strong>.xlsx</strong></p>
         <ul>
-          <li>В первом столбце должно быть <strong>оригинальное название фильма (original_name)</strong>.</li>
-          <li>Во втором столбце — <strong>год (year)</strong> выхода.</li>
-          <li>В третьем столбце — <strong>статус</strong> ("Посмотрел" или "Буду смотреть").</li>
+          <li>В первом столбце должно быть <strong>оригинальное название (original_name)</strong></li>
+          <li>Во втором столбце — <strong>год (year)</strong> выхода</li>
+          <li>В третьем столбце — <strong>статус</strong> ("Посмотрел" или "Буду смотреть")</li>
         </ul>
         <p>Файлы других форматов не принимаются.</p>
       </div>
