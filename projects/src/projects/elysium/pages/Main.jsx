@@ -13,6 +13,8 @@ const FILTERS = [
   { value: 'FILM', label: 'Фильмы' },
   { value: 'TV_SERIES', label: 'Сериалы' },
   { value: 'MINI_SERIES', label: 'Мини-сериалы' },
+  { value: 'VIDEO', label: 'Видео' },
+  { value: 'TV_SHOW', label: 'ТВ-Шоу' },
 ]
 
 export default function ElysiumMain() {
