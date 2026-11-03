@@ -386,12 +386,13 @@ export default function ElysiumMovieDetail() {
             {STATUSES.map((s) => {
               const isSeries = movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES'
 
+              // Скрываем кнопку "Посмотрел" для сериалов
               if (isSeries && s.value === 'watched') return null
 
-              // Проверяем, есть ли отмеченные серии
-              const hasWatchedEpisodes = isSeries && Object.keys(watchedEpisodes).length > 0
+              // Проверяем, есть ли отмеченные серии (пересчитываем при каждом рендере)
+              const hasWatchedEpisodes = isSeries && Object.keys(watchedEpisodes).filter(k => watchedEpisodes[k]).length > 0
 
-              // Если статус "Не смотрел" и есть серии, блокируем кнопку
+              // Если это сериал, есть серии, и статус "Не смотрел" — блокируем визуально
               const isDisabled = s.value === 'not_watched' && hasWatchedEpisodes
 
               return (
@@ -409,14 +410,15 @@ export default function ElysiumMovieDetail() {
                     }
                     handleStatusChange(s.value)
                   }}
-                  disabled={isDisabled}
-                  style={isDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+                  style={isDisabled ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'auto' } : {}}
+                  title={isDisabled ? 'Есть отмеченные серии' : ''}
                 >
                   {s.label}
                 </button>
               )
             })}
 
+            {/* Для сериалов кнопка "Смотрю" */}
             {movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES' ? (
               <button
                 className={
