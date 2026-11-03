@@ -373,22 +373,27 @@ export default function ElysiumMovieDetail() {
           )}
 
           <div className="moviedetail-meta">
-            {movie.year && <span>{movie.year}</span>}
-            {movie.filmLength && <span>{movie.filmLength} мин</span>}
-            {movie.ratingKinopoisk && (
+            {movie.year && movie.year !== 0 ? <span>{movie.year}</span> : null}
+            {movie.filmLength && movie.filmLength !== 0 ? <span>{movie.filmLength} мин</span> : null}
+            {movie.ratingKinopoisk && movie.ratingKinopoisk !== 0 ? (
               <span className="moviedetail-rating">
                 ★ {movie.ratingKinopoisk}
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="moviedetail-statuses">
             {STATUSES.map((s) => {
-              // Скрываем кнопку "Посмотрел", если это сериал
               const isSeries = movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES'
+
               if (isSeries && s.value === 'watched') return null
 
-              // Для сериалов "Не смотрел" и "Буду смотреть"
+              // Проверяем, есть ли отмеченные серии
+              const hasWatchedEpisodes = isSeries && Object.keys(watchedEpisodes).length > 0
+
+              // Если статус "Не смотрел" и есть серии, блокируем кнопку
+              const isDisabled = s.value === 'not_watched' && hasWatchedEpisodes
+
               return (
                 <button
                   key={s.value}
@@ -397,14 +402,21 @@ export default function ElysiumMovieDetail() {
                       ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
                       : 'moviedetail-statusbtn'
                   }
-                  onClick={() => handleStatusChange(s.value)}
+                  onClick={() => {
+                    if (isDisabled) {
+                      showError('Нельзя поставить статус «Не смотрел», пока отмечены просмотренные серии. Сначала снимите все отметки с серий.')
+                      return
+                    }
+                    handleStatusChange(s.value)
+                  }}
+                  disabled={isDisabled}
+                  style={isDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
                 >
                   {s.label}
                 </button>
               )
             })}
 
-            {/* Для сериалов добавляем кнопку "Смотрю" */}
             {movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES' ? (
               <button
                 className={
@@ -439,19 +451,19 @@ export default function ElysiumMovieDetail() {
           <div className="moviedetail-item">
             <span className="moviedetail-label">Длительность</span>
             <span className="moviedetail-value">
-              {movie.filmLength ? `${movie.filmLength} мин` : '—'}
+              {movie.filmLength && movie.filmLength !== 0 ? <span>{movie.filmLength} мин</span> : "—"}
             </span>
           </div>
           <div className="moviedetail-item">
             <span className="moviedetail-label">Рейтинг Кинопоиск</span>
             <span className="moviedetail-value">
-              {movie.ratingKinopoisk || '—'}
+              {movie.ratingKinopoisk && movie.ratingKinopoisk !== 0 ? movie.ratingKinopoisk : '—'}
             </span>
           </div>
           <div className="moviedetail-item">
             <span className="moviedetail-label">Рейтинг IMDb</span>
             <span className="moviedetail-value">
-              {movie.ratingImdb || '—'}
+              {movie.ratingImdb && movie.ratingImdb !== 0 ? movie.ratingImdb : '—'}
             </span>
           </div>
           <div className="moviedetail-item">

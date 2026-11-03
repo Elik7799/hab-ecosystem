@@ -333,7 +333,7 @@ export default function ElysiumProfile() {
                   />
                   <div className="profile-movieinfo">
                     <p className="profile-moviename">{getMovieName(movie)}</p>
-                    <p className="profile-movieyear">{movie.year}</p>
+                    <p className="profile-movieyear">{movie.year && movie.year !== 0 ? movie.year : '—'}</p>
                   </div>
                 </Link>
               ))}
@@ -394,7 +394,7 @@ export default function ElysiumProfile() {
                 />
                 <div className="profile-movieinfo">
                   <p className="profile-moviename">{getMovieName(movie)}</p>
-                  <p className="profile-movieyear">{movie.year}</p>
+                  <p className="profile-movieyear">{movie.year && movie.year !== 0 ? movie.year : '—'}</p>
                   {isOwn && (
                     <span className="profile-moviestatus">
                       {STATUS_LABELS[movie.status]}

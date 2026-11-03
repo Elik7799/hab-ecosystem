@@ -245,7 +245,7 @@ export default function ElysiumMain() {
                 />
                 <div className="main-movieinfo">
                   <p className="main-moviename">{getMovieName(movie)}</p>
-                  <p className="main-movieyear">{movie.year}</p>
+                  <p className="main-movieyear">{movie.year && movie.year !== 0 ? movie.year : '—'}</p>
                 </div>
               </Link>
             ))}

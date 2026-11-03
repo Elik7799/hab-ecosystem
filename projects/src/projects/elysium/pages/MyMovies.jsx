@@ -159,19 +159,19 @@ export default function ElysiumMyMovies() {
                   <p className="my-movies-original">{movie.nameOriginal}</p>
                 )}
                 <div className="my-movies-meta">
-                  {movie.year && <span className="my-movies-year">{movie.year}</span>}
-                  {movie.filmLength && (
-                    <span className="my-movies-meta-item">
-                      <Clock size={12} />
-                      {movie.filmLength} мин
-                    </span>
-                  )}
-                  {movie.ratingKinopoisk && (
-                    <span className="my-movies-meta-item my-movies-rating">
-                      <Star size={12} />
-                      {movie.ratingKinopoisk}
-                    </span>
-                  )}
+                  <span className="my-movies-year">
+                    {movie.year && movie.year !== 0 ? movie.year : '—'}
+                  </span>
+
+                  <span className="my-movies-meta-item">
+                    <Clock size={12} />
+                    {movie.filmLength && movie.filmLength !== 0 ? `${movie.filmLength} мин` : '—'}
+                  </span>
+
+                  <span className="my-movies-meta-item my-movies-rating">
+                    <Star size={12} />
+                    {movie.ratingKinopoisk && movie.ratingKinopoisk !== 0 ? movie.ratingKinopoisk : '—'}
+                  </span>
                 </div>
               </div>
 

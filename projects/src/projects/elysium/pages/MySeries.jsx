@@ -14,6 +14,8 @@ const SORT_OPTIONS = [
   { value: 'year_asc', label: 'По году (старые-новые)' },
   { value: 'ep_date_desc', label: 'По дате выхода серии (новые-старые)' },
   { value: 'ep_date_asc', label: 'По дате выхода серии (старые-новые)' },
+  { value: 'remaining_asc', label: 'По остатку серий (меньше-больше)' },
+  { value: 'remaining_desc', label: 'По остатку серий (больше-меньше)' },
 ]
 
 const PLANNED_SORT_OPTIONS = [
@@ -21,11 +23,13 @@ const PLANNED_SORT_OPTIONS = [
   { value: 'name_desc', label: 'По названию (Я-А)' },
   { value: 'year_desc', label: 'По году (новые-старые)' },
   { value: 'year_asc', label: 'По году (старые-новые)' },
+  { value: 'episodes_desc', label: 'По кол-ву серий (больше-меньше)' },
+  { value: 'episodes_asc', label: 'По кол-ву серий (меньше-больше)' },
 ]
 
 export default function ElysiumMySeries() {
   const { token } = useAuth()
-  
+
   // Верхний список (Смотрю)
   const [series, setSeries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +44,6 @@ export default function ElysiumMySeries() {
     () => localStorage.getItem('my-planned-series-sort') || 'name_asc'
   )
 
-  // Загрузка верхнего списка
   const fetchSeries = async () => {
     if (!token) return
     try {
@@ -57,7 +60,6 @@ export default function ElysiumMySeries() {
     }
   }
 
-  // Загрузка нижнего списка
   const fetchPlannedSeries = async () => {
     if (!token) return
     try {
@@ -83,7 +85,6 @@ export default function ElysiumMySeries() {
     loadAll()
   }, [token])
 
-  // Сохранение сортировок
   useEffect(() => {
     localStorage.setItem('my-series-sort', sortBy)
   }, [sortBy])
@@ -92,7 +93,6 @@ export default function ElysiumMySeries() {
     localStorage.setItem('my-planned-series-sort', plannedSortBy)
   }, [plannedSortBy])
 
-  // Отметка серии (верхний список)
   const handleMarkWatched = async (show, season, episode) => {
     setUpdatingId(show.kinopoiskId)
     try {
@@ -124,7 +124,6 @@ export default function ElysiumMySeries() {
     }
   }
 
-  // Перевод в статус "Смотрю" (нижний список)
   const handleStartWatching = async (show) => {
     setUpdatingId(show.kinopoiskId)
     try {
@@ -139,7 +138,6 @@ export default function ElysiumMySeries() {
 
       if (res.ok) {
         showSuccess(`«${getMovieName(show)}» добавлен в «Смотрю»`)
-        // Обновляем оба списка
         await Promise.all([fetchSeries(), fetchPlannedSeries()])
       } else {
         showError('Не удалось изменить статус')
@@ -179,6 +177,10 @@ export default function ElysiumMySeries() {
         const dateB = b.nextEpisodeDate ? new Date(b.nextEpisodeDate).getTime() : Infinity
         return dateA - dateB
       }
+      case 'remaining_asc':
+        return (a.remaining || 0) - (b.remaining || 0)
+      case 'remaining_desc':
+        return (b.remaining || 0) - (a.remaining || 0)
       default:
         return 0
     }
@@ -201,6 +203,10 @@ export default function ElysiumMySeries() {
         if (diff !== 0) return diff
         return getMovieName(a).localeCompare(getMovieName(b), 'ru')
       }
+      case 'episodes_desc':
+        return (b.remaining || 0) - (a.remaining || 0)
+      case 'episodes_asc':
+        return (a.remaining || 0) - (b.remaining || 0)
       default:
         return 0
     }
@@ -217,7 +223,6 @@ export default function ElysiumMySeries() {
 
   return (
     <div className="my-series-body">
-      {/* ============ ВЕРХНИЙ БЛОК: СМОТРЮ ============ */}
       <div className="my-series-header-row">
         <div>
           <h1 className="my-series-title">Смотрю сейчас</h1>
@@ -305,7 +310,6 @@ export default function ElysiumMySeries() {
         </div>
       )}
 
-      {/* ============ НИЖНИЙ БЛОК: БУДУ СМОТРЕТЬ ============ */}
       <div className="my-series-header-row my-series-header-row-planned">
         <div>
           <h2 className="my-series-title">Буду смотреть</h2>
@@ -353,14 +357,18 @@ export default function ElysiumMySeries() {
                   <p className="my-series-original">{show.nameOriginal}</p>
                 )}
                 <div className="my-series-meta-row">
-                  {show.year && <span>{show.year}</span>}
-                  {show.ratingKinopoisk && (
+                  {show.year && show.year !== 0 && (
+                    <span>{show.year}</span>
+                  )}
+
+                  {show.ratingKinopoisk && show.ratingKinopoisk !== 0 && (
                     <span className="my-series-rating">
                       <Star size={12} /> {show.ratingKinopoisk}
                     </span>
                   )}
-                  {show.episodesCount > 0 && (
-                    <span>{show.episodesCount} сер.</span>
+
+                  {show.remaining > 0 && (
+                    <span>осталось {show.remaining} сер.</span>
                   )}
                 </div>
               </div>

@@ -815,7 +815,7 @@ export default function ElysiumMatch() {
                                     className="match-poster"
                                 />
                                 <p className="match-name">{getMovieName(movie)}</p>
-                                <p className="match-year">{movie.year}</p>
+                                <p className="match-year">{movie.year && movie.year !== 0 ? movie.year : '—'}</p>
                             </Link>
                         ))}
                     </div>

@@ -164,8 +164,10 @@ function authMiddleware(req, res, next) {
 async function saveMovieToDb(movie) {
   if (!movie || !movie.kinopoiskId) return null
 
-  // Вспомогательная функция для замены null на 'Отсутствует'
-  const notEmpty = (val) => (val === null || val === undefined ? 'Отсутствует' : val)
+  // Заменяем null на 'Отсутствует' ТОЛЬКО для текстовых полей
+  // Для чисел оставляем null (или 0), чтобы не ломать тип данных
+  const notEmptyText = (val) => (val === null || val === undefined ? 'Отсутствует' : val)
+  const notEmptyNum = (val) => (val === null || val === undefined ? 0 : val)
 
   try {
     const result = await pool.query(
@@ -192,18 +194,18 @@ async function saveMovieToDb(movie) {
       RETURNING *`,
       [
         movie.kinopoiskId,
-        notEmpty(movie.nameRu),
-        notEmpty(movie.nameEn),
-        notEmpty(movie.nameOriginal),
-        notEmpty(movie.year),
-        notEmpty(movie.type),
-        notEmpty(movie.posterUrl),
-        notEmpty(movie.posterUrlPreview),
-        notEmpty(movie.ratingKinopoisk),
-        notEmpty(movie.ratingImdb),
-        notEmpty(movie.description),
-        notEmpty(movie.filmLength),
-        notEmpty(movie.slogan),
+        notEmptyText(movie.nameRu),
+        notEmptyText(movie.nameEn),
+        notEmptyText(movie.nameOriginal),
+        notEmptyNum(movie.year),           // <-- Число
+        notEmptyText(movie.type),          // <-- Тип это строка (FILM, TV_SERIES)
+        notEmptyText(movie.posterUrl),
+        notEmptyText(movie.posterUrlPreview),
+        notEmptyNum(movie.ratingKinopoisk), // <-- Число
+        notEmptyNum(movie.ratingImdb),      // <-- Число
+        notEmptyText(movie.description),
+        notEmptyNum(movie.filmLength),      // <-- Число
+        notEmptyText(movie.slogan),
       ]
     )
     return result.rows[0]
@@ -529,6 +531,18 @@ app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
 
   if (status === 'not_watched') {
     try {
+      // Проверяем, есть ли отмеченные серии
+      const watchedResult = await pool.query(
+        'SELECT COUNT(*) FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
+        [userId, movieId]
+      )
+
+      if (parseInt(watchedResult.rows[0].count) > 0) {
+        return res.status(400).json({
+          error: 'Нельзя сбросить статус, пока отмечены серии. Сначала снимите отметки.'
+        })
+      }
+
       await pool.query(
         'DELETE FROM user_movies WHERE user_id = $1 AND movie_id = $2',
         [userId, movieId]
@@ -910,6 +924,7 @@ app.get('/api/users/me/watchlist-series', authMiddleware, async (req, res) => {
         m.poster_url_preview AS "posterUrlPreview",
         m.rating_kinopoisk AS "ratingKinopoisk",
         m.rating_imdb AS "ratingImdb",
+        m.film_length AS "filmLength",
         (SELECT COUNT(*) FROM seasons WHERE movie_id = m.kinopoisk_id AND (release_date <= NOW() OR release_date IS NULL)) AS "episodesCount"
        FROM user_movies um
        JOIN movies m ON m.kinopoisk_id = um.movie_id
@@ -920,13 +935,36 @@ app.get('/api/users/me/watchlist-series', authMiddleware, async (req, res) => {
       [userId]
     )
 
-    res.json({ series: result.rows })
+    const series = []
+
+    for (const row of result.rows) {
+      // Считаем, сколько серий просмотрено пользователем
+      const watchedResult = await pool.query(
+        'SELECT COUNT(*) FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
+        [userId, row.kinopoiskId]
+      )
+      const watchedCount = parseInt(watchedResult.rows[0].count)
+      const totalAired = parseInt(row.episodesCount) || 0
+
+      // Вычисляем остаток
+      // Если что-то просмотрено — остаток = всего вышедших - просмотрено
+      // Если ничего не просмотрено — остаток = всего вышедших
+      const remaining = watchedCount > 0 ? Math.max(0, totalAired - watchedCount) : totalAired
+
+      series.push({
+        ...row,
+        episodesCount: totalAired,
+        watchedCount,
+        remaining
+      })
+    }
+
+    res.json({ series })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка загрузки списка сериалов' })
   }
 })
-
 app.get('/api/users/me/watchlist', authMiddleware, async (req, res) => {
   const userId = req.user.id
 
@@ -1873,7 +1911,7 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
 
     const data = await response.json()
     const films = data.items || []
-    
+
     // Сохраняем фильмы в базу
     const filmIds = []
     for (const film of films) {
@@ -2837,15 +2875,11 @@ async function checkAndUpdateOnStartup() {
     const result = await pool.query(
       `SELECT MAX(last_checked_at_all) as last_full_update FROM movies`
     )
-    
+
     const lastFullUpdate = result.rows[0]?.last_full_update
     const now = new Date()
-    
-    // Отладка: показываем, что видит сервер
-    console.log('🕒 Отладка времени:')
-    console.log('   lastFullUpdate (из БД):', lastFullUpdate)
-    console.log('   now (на сервере):', now.toISOString())
-    
+
+
     if (!lastFullUpdate) {
       console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю...')
       updateOldMovies()
@@ -2855,7 +2889,7 @@ async function checkAndUpdateOnStartup() {
     // Принудительно приводим к UTC
     const lastTime = new Date(lastFullUpdate).getTime()
     const nowTime = now.getTime()
-    
+
     // Если разница отрицательная (время из будущего) — значит, часы сбиты
     // В этом случае лучше запустить обновление
     if (nowTime < lastTime) {
@@ -2865,8 +2899,6 @@ async function checkAndUpdateOnStartup() {
     }
 
     const diffHours = (nowTime - lastTime) / (1000 * 60 * 60)
-
-    console.log(`   Разница: ${diffHours.toFixed(2)} ч.`)
 
     if (diffHours >= 8) {
       console.log(`🕒 Прошло ${Math.round(diffHours)} ч. с последнего глобального обновления. Запускаю...`)
