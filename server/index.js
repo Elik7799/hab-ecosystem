@@ -2609,17 +2609,43 @@ async function updateOneMovie(kinopoiskId) {
     const newRaw = fresh[apiField]
     const newNorm = normalizeForCompare(newRaw, dbField)
 
-    // Если из API пришел null, а у нас 'Отсутствует' (или наоборот) — это не изменение
-    if (newNorm === null && oldNorm === 'Отсутствует') continue
-    if (oldNorm === null && newNorm === 'Отсутствует') continue
+    // 1. Если API вернул null, а у нас уже есть маркер "Отсутствует" или 0 — это не изменение
+    if (newNorm === null) {
+      if (oldNorm === 'Отсутствует' || oldNorm === 0) continue
+    }
 
+    // 2. Если у нас в базе 0, а API вернул не null (какое-то значение) — это изменение (например, рейтинг появился)
+    // Но если API вернул null, а у нас 0 — это тоже НЕ изменение (см. п.1)
+    if (oldNorm === 0 && newNorm === null) continue
+
+    // 3. Если оба null или оба 'Отсутствует' — пропускаем
     if (oldNorm === newNorm) continue
 
-    // Политика: если API вернул null/пусто — не затираем существующее значение
-    if (newNorm === null && oldNorm !== null) continue
+    // 4. Если API вернул null, а у нас есть реальные данные — не затираем
+    if (newNorm === null && oldNorm !== null && oldNorm !== 0 && oldNorm !== 'Отсутствует') continue
 
-    changed.push({ field: dbField, old: oldNorm, new: newNorm })
-    updateValues[dbField] = newRaw ?? null
+    // 5. Если API вернул null, а у нас в базе null — записываем маркер (0 для чисел, 'Отсутствует' для строк)
+    if (newNorm === null && oldNorm === null) {
+      const isNumeric = NUMERIC_FIELDS.has(dbField)
+      const fallback = isNumeric ? 0 : 'Отсутствует'
+      
+      changed.push({ field: dbField, old: null, new: fallback })
+      updateValues[dbField] = fallback
+      continue
+    }
+
+    // 6. Если API вернул значение, а у нас 0 или 'Отсутствует' — это изменение, обновляем на реальное
+    if (newNorm !== null && (oldNorm === 0 || oldNorm === 'Отсутствует')) {
+      changed.push({ field: dbField, old: oldNorm, new: newNorm })
+      updateValues[dbField] = newRaw ?? null
+      continue
+    }
+
+    // 7. Во всех остальных случаях (изменилось реальное значение)
+    if (oldNorm !== newNorm) {
+      changed.push({ field: dbField, old: oldNorm, new: newNorm })
+      updateValues[dbField] = newRaw ?? null
+    }
   }
 
   // ── 2. Жанры ──────────────────────────────────────────────────────
