@@ -164,9 +164,9 @@ function authMiddleware(req, res, next) {
 async function saveMovieToDb(movie) {
   if (!movie || !movie.kinopoiskId) return null
 
-  // Заменяем null на 'Отсутствует' ТОЛЬКО для текстовых полей
+  // Заменяем null на '—' ТОЛЬКО для текстовых полей
   // Для чисел оставляем null (или 0), чтобы не ломать тип данных
-  const notEmptyText = (val) => (val === null || val === undefined ? 'Отсутствует' : val)
+  const notEmptyText = (val) => (val === null || val === undefined ? '—' : val)
   const notEmptyNum = (val) => (val === null || val === undefined ? 0 : val)
 
   try {
@@ -2614,13 +2614,13 @@ async function updateOneMovie(kinopoiskId) {
 
     // Если из API пришел null/undefined
     if (newNorm === null) {
-      // Если в базе уже 0 или 'Отсутствует' — это не изменение
-      if (oldNorm === 0 || oldNorm === 'Отсутствует') continue
+      // Если в базе уже 0 или '—' — это не изменение
+      if (oldNorm === 0 || oldNorm === '—') continue
 
-      // Если в базе null — записываем маркер (0 для чисел, 'Отсутствует' для строк)
+      // Если в базе null — записываем маркер (0 для чисел, '—' для строк)
       if (oldNorm === null) {
         const isNumeric = NUMERIC_FIELDS.has(dbField)
-        const fallback = isNumeric ? 0 : 'Отсутствует'
+        const fallback = isNumeric ? 0 : '—'
         changed.push({ field: dbField, old: null, new: fallback })
         updateValues[dbField] = fallback
         continue
@@ -2633,8 +2633,8 @@ async function updateOneMovie(kinopoiskId) {
     // Если API вернул реальное значение
     if (oldNorm === newNorm) continue
 
-    // Если в базе 0 или 'Отсутствует' — обновляем на реальное значение
-    if (oldNorm === 0 || oldNorm === 'Отсутствует') {
+    // Если в базе 0 или '—' — обновляем на реальное значение
+    if (oldNorm === 0 || oldNorm === '—') {
       changed.push({ field: dbField, old: oldNorm, new: newNorm })
       updateValues[dbField] = newRaw ?? null
       continue
