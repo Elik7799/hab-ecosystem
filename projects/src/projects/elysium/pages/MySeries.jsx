@@ -267,7 +267,11 @@ export default function ElysiumMySeries() {
                   {getMovieName(show)}
                 </Link>
 
-                {show.nextEpisode ? (
+                {show.totalAired === 0 ? (
+                  <p className="my-series-done" style={{ color: '#888' }}>
+                    Серии ещё не вышли
+                  </p>
+                ) : show.nextEpisode ? (
                   <div className="my-series-next">
                     <p className="my-series-next-label">Следующая серия:</p>
                     <p className="my-series-next-title">
