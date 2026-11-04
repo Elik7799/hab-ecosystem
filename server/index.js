@@ -2935,10 +2935,18 @@ async function checkAndUpdateOnStartup() {
     }
 
     const diffHours = (nowTime - lastTime) / (1000 * 60 * 60)
-
-    if (diffHours >= 8) {
-      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. с последнего глобального обновления. Запускаю...`)
-      updateOldMovies()
+    if (diffHours >= 24) {
+      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. Запускаю 3 раза последовательно...`)
+      await updateOldMovies()
+      await updateOldMovies()
+      await updateOldMovies()
+    } else if (diffHours >= 16) {
+      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. Запускаю 2 раза последовательно...`)
+      await updateOldMovies()
+      await updateOldMovies()
+    } else if (diffHours >= 8) {
+      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. Запускаю...`)
+      await updateOldMovies()
     } else {
       console.log(`🕒 Глобальное обновление было ${Math.round(diffHours)} ч. назад. Пропускаю.`)
     }
