@@ -52,3 +52,5 @@ server/update.log
 rulls.txt
 
 fetch-movies.js
+structure.txt
+schema_dump.sql

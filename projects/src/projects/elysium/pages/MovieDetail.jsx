@@ -383,40 +383,75 @@ export default function ElysiumMovieDetail() {
           </div>
 
           <div className="moviedetail-statuses">
-            {STATUSES.map((s) => {
+            {(() => {
               const isSeries = movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES'
 
-              // Скрываем кнопку "Посмотрел" для сериалов
-              if (isSeries && s.value === 'watched') return null
+              // Отмеченные пользователем серии
+              const hasWatchedEpisodes =
+                isSeries &&
+                Object.keys(watchedEpisodes).filter((k) => watchedEpisodes[k]).length > 0
 
-              // Проверяем, есть ли отмеченные серии (пересчитываем при каждом рендере)
-              const hasWatchedEpisodes = isSeries && Object.keys(watchedEpisodes).filter(k => watchedEpisodes[k]).length > 0
+              // Все вышедшие серии просмотрены?
+              let allAiredWatched = false
+              if (isSeries && episodes.length > 0) {
+                const airedEpisodes = episodes.filter((e) =>
+                  e.release_date ? new Date(e.release_date) <= new Date() : false
+                )
+                allAiredWatched =
+                  airedEpisodes.length > 0 &&
+                  airedEpisodes.every(
+                    (e) => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
+                  )
+              }
 
-              // Если это сериал, есть серии, и статус "Не смотрел" — блокируем визуально
-              const isDisabled = s.value === 'not_watched' && hasWatchedEpisodes
+              return STATUSES.map((s) => {
+                // Скрываем кнопку "Посмотрел" для сериалов
+                if (isSeries && s.value === 'watched') return null
 
-              return (
-                <button
-                  key={s.value}
-                  className={
-                    status === s.value
-                      ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
-                      : 'moviedetail-statusbtn'
-                  }
-                  onClick={() => {
-                    if (isDisabled) {
-                      showError('Нельзя поставить статус «Не смотрел», пока отмечены просмотренные серии. Сначала снимите все отметки с серий.')
-                      return
+                // Блокируем "Не смотрел" — если есть отмеченные серии
+                const isNotWatchedDisabled = s.value === 'not_watched' && hasWatchedEpisodes
+
+                // Блокируем "Буду смотреть" — если всё вышедшее уже просмотрено
+                const isWantToWatchDisabled = s.value === 'want_to_watch' && allAiredWatched
+
+                const isDisabled = isNotWatchedDisabled || isWantToWatchDisabled
+
+                let disabledHint = ''
+                if (isNotWatchedDisabled) {
+                  disabledHint =
+                    'Нельзя поставить статус «Не смотрел», пока отмечены просмотренные серии. Сначала снимите все отметки с серий.'
+                } else if (isWantToWatchDisabled) {
+                  disabledHint =
+                    'Нельзя поставить статус «Буду смотреть» — все вышедшие серии уже просмотрены.'
+                }
+
+                return (
+                  <button
+                    key={s.value}
+                    className={
+                      status === s.value
+                        ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
+                        : 'moviedetail-statusbtn'
                     }
-                    handleStatusChange(s.value)
-                  }}
-                  style={isDisabled ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'auto' } : {}}
-                  title={isDisabled ? 'Есть отмеченные серии' : ''}
-                >
-                  {s.label}
-                </button>
-              )
-            })}
+                    onClick={() => {
+                      if (isDisabled) {
+                        showError(disabledHint)
+                        return
+                      }
+                      handleStatusChange(s.value)
+                    }}
+                    style={
+                      isDisabled
+                        ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'auto' }
+                        : {}
+                    }
+                    title={isDisabled ? disabledHint : ''}
+                  >
+                    {s.label}
+                  </button>
+                )
+              })
+            })()}
 
             {/* Для сериалов кнопка "Смотрю" */}
             {movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES' ? (

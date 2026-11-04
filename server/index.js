@@ -366,7 +366,7 @@ app.post('/api/episodes/toggle', authMiddleware, async (req, res) => {
     // Считаем вышедшие и просмотренные серии
     const allEpisodes = await pool.query(
       `SELECT season_number, episode_number FROM seasons 
-       WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)`,
+       WHERE movie_id = $1 AND release_date IS NOT NULL AND release_date <= NOW()`,
       [movieId]
     )
 
@@ -434,7 +434,7 @@ app.post('/api/episodes/bulk-toggle', authMiddleware, async (req, res) => {
     // Пересчитываем статус всего сериала
     const allAiredEpisodes = await client.query(
       `SELECT season_number, episode_number FROM seasons 
-       WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)`,
+       WHERE movie_id = $1 AND release_date IS NOT NULL AND release_date <= NOW()`,
       [movieId]
     )
 
@@ -843,7 +843,20 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         m.year
        FROM user_movies um
        JOIN movies m ON m.kinopoisk_id = um.movie_id
-       WHERE um.user_id = $1 AND um.status = 'watching'
+       WHERE um.user_id = $1 
+         AND um.status = 'watching'
+         AND EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.movie_id = m.kinopoisk_id
+            AND s.release_date IS NOT NULL AND s.release_date <= NOW()
+            AND NOT EXISTS (
+              SELECT 1 FROM user_episodes ue
+              WHERE ue.user_id = $1
+                AND ue.movie_id = s.movie_id
+                AND ue.season_number = s.season_number
+                AND ue.episode_number = s.episode_number
+            )
+         )
        ORDER BY um.id DESC`,
       [userId]
     )
@@ -854,7 +867,7 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
       const allAiredEpisodes = await pool.query(
         `SELECT season_number, episode_number, release_date
          FROM seasons 
-         WHERE movie_id = $1 AND (release_date <= NOW() OR release_date IS NULL)
+         WHERE movie_id = $1 AND release_date IS NOT NULL AND release_date <= NOW()
          ORDER BY season_number ASC, episode_number ASC`,
         [movie.kinopoiskId]
       )
@@ -895,7 +908,7 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         nextSeason: nextEpisode ? nextEpisode.season_number : null,
         nextEpisode: nextEpisode ? nextEpisode.episode_number : null,
         nextEpisodeName: nextEpisodeName,
-        nextEpisodeDate: nextEpisodeDate, // <-- Добавили дату выхода
+        nextEpisodeDate: nextEpisodeDate,
         remaining: allAiredEpisodes.rows.length - watchedSet.size,
         totalAired: allAiredEpisodes.rows.length,
         watchedCount: watchedSet.size,
@@ -925,7 +938,7 @@ app.get('/api/users/me/watchlist-series', authMiddleware, async (req, res) => {
         m.rating_kinopoisk AS "ratingKinopoisk",
         m.rating_imdb AS "ratingImdb",
         m.film_length AS "filmLength",
-        (SELECT COUNT(*) FROM seasons WHERE movie_id = m.kinopoisk_id AND (release_date <= NOW() OR release_date IS NULL)) AS "episodesCount"
+        (SELECT COUNT(*) FROM seasons WHERE movie_id = m.kinopoisk_id AND release_date IS NOT NULL AND release_date <= NOW()) AS "episodesCount"
        FROM user_movies um
        JOIN movies m ON m.kinopoisk_id = um.movie_id
        WHERE um.user_id = $1 
