@@ -164,10 +164,22 @@ function authMiddleware(req, res, next) {
 async function saveMovieToDb(movie) {
   if (!movie || !movie.kinopoiskId) return null
 
-  // Заменяем null на '—' ТОЛЬКО для текстовых полей
-  // Для чисел оставляем null (или 0), чтобы не ломать тип данных
-  const notEmptyText = (val) => (val === null || val === undefined ? '—' : val)
-  const notEmptyNum = (val) => (val === null || val === undefined ? 0 : val)
+  const notEmptyText = (val) =>
+    val === null || val === undefined || val === 'null' ? '—' : val
+
+  // Приводим к числу что угодно: "01:57", "null", "", null, undefined, "7.5"
+  const notEmptyNum = (val) => {
+    if (val === null || val === undefined) return 0
+
+    // Строка "ЧЧ:ММ" → минуты (для filmLength)
+    if (typeof val === 'string' && /^\d{1,2}:\d{2}$/.test(val.trim())) {
+      const [h, m] = val.trim().split(':').map(Number)
+      return h * 60 + m
+    }
+
+    const num = Number(val)
+    return Number.isFinite(num) ? num : 0
+  }
 
   try {
     const result = await pool.query(
@@ -197,14 +209,14 @@ async function saveMovieToDb(movie) {
         notEmptyText(movie.nameRu),
         notEmptyText(movie.nameEn),
         notEmptyText(movie.nameOriginal),
-        notEmptyNum(movie.year),           // <-- Число
-        notEmptyText(movie.type),          // <-- Тип это строка (FILM, TV_SERIES)
+        notEmptyNum(movie.year),
+        notEmptyText(movie.type),
         notEmptyText(movie.posterUrl),
         notEmptyText(movie.posterUrlPreview),
-        notEmptyNum(movie.ratingKinopoisk), // <-- Число
-        notEmptyNum(movie.ratingImdb),      // <-- Число
+        notEmptyNum(movie.ratingKinopoisk),
+        notEmptyNum(movie.ratingImdb),
         notEmptyText(movie.description),
-        notEmptyNum(movie.filmLength),      // <-- Число
+        notEmptyNum(movie.filmLength),
         notEmptyText(movie.slogan),
       ]
     )
@@ -2284,11 +2296,15 @@ app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
     const allEpisodes = []
 
     for (const season of data.docs || []) {
+      if (season.number == null) continue
+
       for (const ep of season.episodes || []) {
+        const episodeNumber = ep.episodeNumber ?? ep.number ?? ep.episode
+        if (episodeNumber == null) continue
+
         allEpisodes.push({
           season_number: season.number,
-          // Пробуем разные варианты, чтобы точно поймать номер серии
-          episode_number: ep.episodeNumber || ep.number || ep.episode,
+          episode_number: episodeNumber,
           name_ru: ep.name || ep.nameRu,
           release_date: ep.airDate || ep.releaseDate,
         })
