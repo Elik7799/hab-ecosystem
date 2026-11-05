@@ -2806,17 +2806,16 @@ async function cleanupOldMatchRooms() {
   }
 }
 
-async function updateOldMovies() {
-  logUpdate('Проверяю фильмы для обновления...')
+async function updateOldMovies(batchSize = 100) {
+  logUpdate(`Проверяю фильмы для обновления... (батч: ${batchSize})`)
 
   try {
-    // Собираем фильмы по "локальному" обновлению (старые по last_checked_at)
     const result = await pool.query(
       `SELECT kinopoisk_id
        FROM movies
        ORDER BY COALESCE(last_checked_at, updated_at, created_at) ASC
        LIMIT $1`,
-      [UPDATE_BATCH_SIZE]
+      [batchSize]
     )
 
     if (result.rows.length === 0) {
@@ -2830,7 +2829,7 @@ async function updateOldMovies() {
     let failed = 0
     let unchanged = 0
     let stopped = false
-    let processedIds = [] // Собираем ID, которые прошли обновление
+    let processedIds = []
 
     for (const row of result.rows) {
       try {
@@ -2859,7 +2858,6 @@ async function updateOldMovies() {
           continue
         }
 
-        // Запоминаем успешные ID
         processedIds.push(row.kinopoisk_id)
 
         if (changed.length === 0) {
@@ -2880,8 +2878,6 @@ async function updateOldMovies() {
       await new Promise((r) => setTimeout(r, UPDATE_DELAY_MS))
     }
 
-    // ── ГЛОБАЛЬНОЕ ОБНОВЛЕНИЕ ДАТ ──────────────────────────────────
-    // Проставляем last_checked_at_all для всех, кто был в пачке
     if (processedIds.length > 0) {
       await pool.query(
         `UPDATE movies SET last_checked_at_all = NOW() WHERE kinopoisk_id = ANY($1)`,
@@ -2915,40 +2911,34 @@ async function checkAndUpdateOnStartup() {
     const lastFullUpdate = result.rows[0]?.last_full_update
     const now = new Date()
 
-
     if (!lastFullUpdate) {
-      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю...')
-      updateOldMovies()
+      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю (батч: 300)...')
+      await updateOldMovies(300)
       return
     }
 
-    // Принудительно приводим к UTC
     const lastTime = new Date(lastFullUpdate).getTime()
     const nowTime = now.getTime()
 
-    // Если разница отрицательная (время из будущего) — значит, часы сбиты
-    // В этом случае лучше запустить обновление
     if (nowTime < lastTime) {
-      console.log('🕒 Время из БД в будущем. Часовые пояса сбиты. Запускаю обновление...')
-      updateOldMovies()
+      console.log('🕒 Время из БД в будущем. Часовые пояса сбиты. Запускаю (батч: 300)...')
+      await updateOldMovies(300)
       return
     }
 
     const diffHours = (nowTime - lastTime) / (1000 * 60 * 60)
-    if (diffHours >= 24) {
-      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. Запускаю 3 раза последовательно...`)
-      await updateOldMovies()
-      await updateOldMovies()
-      await updateOldMovies()
-    } else if (diffHours >= 16) {
-      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. Запускаю 2 раза последовательно...`)
-      await updateOldMovies()
-      await updateOldMovies()
-    } else if (diffHours >= 8) {
-      console.log(`🕒 Прошло ${Math.round(diffHours)} ч. Запускаю...`)
-      await updateOldMovies()
+
+    const batchSize = Math.min(300, Math.max(1, Math.floor(diffHours * 12.5)))
+
+    if (diffHours > 1) {
+      console.log(
+        `🕒 Прошло ${diffHours.toFixed(1)} ч. Запускаю обновление (батч: ${batchSize})...`
+      )
+      await updateOldMovies(batchSize)
     } else {
-      console.log(`🕒 Глобальное обновление было ${Math.round(diffHours)} ч. назад. Пропускаю.`)
+      console.log(
+        `🕒 Глобальное обновление было ${diffHours.toFixed(1)} ч. назад (меньше 1). Пропускаю.`
+      )
     }
   } catch (err) {
     console.error('Ошибка проверки времени обновления:', err)
