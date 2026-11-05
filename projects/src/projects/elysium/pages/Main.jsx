@@ -32,7 +32,11 @@ export default function ElysiumMain() {
   const [query, setQuery] = useState('')
   const [movies, setMovies] = useState([])
   const [filter, setFilter] = useState('ALL')
-  const [category, setCategory] = useState('MARVEL')
+  const [category, setCategory] = useState(() => {
+    const saved = localStorage.getItem('main-category')
+    const valid = CATEGORIES.some((c) => c.value === saved)
+    return valid ? saved : 'MARVEL'
+  })
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
@@ -97,6 +101,10 @@ export default function ElysiumMain() {
     setPage(1)
     fetchPopular(1, false)
   }, [token, category, filter, fetchPopular, isSearching])
+
+  useEffect(() => {
+    localStorage.setItem('main-category', category)
+  }, [category])
 
   const searchMovies = useCallback(
     async (keyword) => {
