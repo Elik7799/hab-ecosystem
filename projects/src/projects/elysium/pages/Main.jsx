@@ -51,7 +51,16 @@ export default function ElysiumMain() {
     const valid = CATEGORIES.some((c) => c.value === saved)
     return valid ? saved : 'TOP_POPULAR_ALL'
   })
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => {
+    // Если восстановили хоть что-то — не показываем скелетон
+    const savedMovies = localStorage.getItem('main-movies')
+    const savedSearching = localStorage.getItem('main-is-searching') === 'true'
+    const savedQuery = (localStorage.getItem('main-query') || '').trim()
+    const hasRestoredMovies = !!savedMovies && savedMovies !== '[]'
+    if (hasRestoredMovies) return false
+    if (savedSearching && savedQuery) return false
+    return true
+  })
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
   const [isSearching, setIsSearching] = useState(
@@ -68,6 +77,11 @@ export default function ElysiumMain() {
   )
 
   const restoredFromStorage = useRef(movies.length > 0)
+  const restoredSearchFromStorage = useRef(
+    movies.length > 0 &&
+    localStorage.getItem('main-is-searching') === 'true' &&
+    (localStorage.getItem('main-query') || '').trim() !== ''
+  )
 
   const fetchPopular = useCallback(
     async (pageNum, append = false) => {
@@ -116,22 +130,27 @@ export default function ElysiumMain() {
 
   // Сброс при смене категории или фильтра
   useEffect(() => {
-    if (!token || isSearching) return
+    if (!isSearching) return
 
-    if (restoredFromStorage.current) {
-      restoredFromStorage.current = false
-      setLoading(false)
+    if (!query.trim()) {
+      setIsSearching(false)
+      setFilter('ALL')
+      fetchPopular(1, false)
       return
     }
 
-    setMovies([])
-    setPage(1)
-    setHasMore(false)
-    setTotalPages(1)
-    window.scrollTo(0, 0)
-    localStorage.removeItem('main-scroll-y')
-    fetchPopular(1, false)
-  }, [token, category, filter, fetchPopular, isSearching])
+    // ← вот это: восстановились из localStorage — не ищем заново
+    if (restoredSearchFromStorage.current) {
+      restoredSearchFromStorage.current = false
+      return
+    }
+
+    const delay = setTimeout(() => {
+      searchMovies(query)
+    }, 500)
+
+    return () => clearTimeout(delay)
+  }, [query, isSearching, searchMovies, fetchPopular])
 
   useEffect(() => {
     localStorage.setItem('main-category', category)
