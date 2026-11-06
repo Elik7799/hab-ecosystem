@@ -26,6 +26,22 @@ const FILTERS = [
   { value: 'TV_SHOW', label: 'ТВ-Шоу' },
 ]
 
+// Одноразовая санитизация localStorage от битых значений
+try {
+  const raw = localStorage.getItem('main-movies')
+  if (raw) {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      localStorage.removeItem('main-movies')
+      localStorage.removeItem('main-page')
+      localStorage.removeItem('main-has-more')
+      localStorage.removeItem('main-total-pages')
+    }
+  }
+} catch {
+  localStorage.removeItem('main-movies')
+}
+
 export default function ElysiumMain() {
   const { token } = useAuth()
 
@@ -36,7 +52,8 @@ export default function ElysiumMain() {
     const saved = localStorage.getItem('main-movies')
     if (!saved) return []
     try {
-      return JSON.parse(saved) || []
+      const parsed = JSON.parse(saved)
+      return Array.isArray(parsed) ? parsed : []
     } catch {
       return []
     }
@@ -76,8 +93,9 @@ export default function ElysiumMain() {
     () => Number(localStorage.getItem('main-total-pages')) || 1
   )
 
-  const restoredFromStorage = useRef(movies.length > 0)
+  const restoredFromStorage = useRef(Array.isArray(movies) && movies.length > 0)
   const restoredSearchFromStorage = useRef(
+    Array.isArray(movies) &&
     movies.length > 0 &&
     localStorage.getItem('main-is-searching') === 'true' &&
     (localStorage.getItem('main-query') || '').trim() !== ''
