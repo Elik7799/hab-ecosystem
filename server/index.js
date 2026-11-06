@@ -186,7 +186,7 @@ async function upsertTmdbMovie(tmdbId) {
   const imdbId = data.external_ids?.imdb_id || null
 
   await pool.query(`
-    INSERT INTO movies (tmdb_id, name_ru, name_en, name_original, year, type, poster_url, poster_url_preview, rating_imdb, description, film_length, slogan, imdb_id, tmdb_last_synced_at)
+    INSERT INTO movies (tmdb_id, name_ru, name_en, name_original, year, type, poster_url, poster_url_preview, rating_imdb, description, film_length, slogan, imdb_id, last_checked_at)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
     ON CONFLICT (tmdb_id) DO UPDATE SET
       name_ru = EXCLUDED.name_ru,
@@ -201,7 +201,7 @@ async function upsertTmdbMovie(tmdbId) {
       film_length = EXCLUDED.film_length,
       slogan = EXCLUDED.slogan,
       imdb_id = COALESCE(EXCLUDED.imdb_id, movies.imdb_id),
-      tmdb_last_synced_at = NOW()
+      last_checked_at = NOW()
   `, [tmdbId, title, originalTitle, originalTitle, year, type, posterUrl, posterPreview, rating, description, filmLength, slogan, imdbId])
 
   // Жанры
@@ -263,14 +263,14 @@ async function syncTmdbSeasons(tmdbId, seasons) {
  * Получает эпизоды из БД (с проверкой актуальности).
  */
 async function getEpisodesFromDb(tmdbId) {
-  const movie = await pool.query('SELECT type, tmdb_last_synced_at FROM movies WHERE tmdb_id = $1', [tmdbId])
+  const movie = await pool.query('SELECT type, last_checked_at FROM movies WHERE tmdb_id = $1', [tmdbId])
   if (movie.rows.length === 0) return []
 
   const isTV = movie.rows[0].type === 'TV_SERIES' || movie.rows[0].type === 'MINI_SERIES'
   if (!isTV) return []
 
   // Проверяем свежесть (7 дней)
-  const lastSync = movie.rows[0].tmdb_last_synced_at
+  const lastSync = movie.rows[0].last_checked_at
   const needsRefresh = !lastSync || (Date.now() - new Date(lastSync).getTime()) > 7 * 24 * 60 * 60 * 1000
 
   const existing = await pool.query(
@@ -519,7 +519,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
   if (!tmdbId) return res.status(400).json({ error: 'Неверный ID' })
 
   try {
-    // Всегда загружаем из TMDB (свежие данные)
+    // Всегда загружаем из TMDB (свежие данные) - фоновая проверка
     try {
       await upsertTmdbMovie(tmdbId)
     } catch (err) {
@@ -540,7 +540,7 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
       nameEn: movie.name_en,
       nameOriginal: movie.name_original,
       year: movie.year,
-      type: movie.type,
+      type: movie.type, // Тут вернется FILM или TV_SERIES
       posterUrl: movie.poster_url,
       posterUrlPreview: movie.poster_url_preview,
       ratingKinopoisk: movie.rating_imdb,
@@ -1449,18 +1449,18 @@ async function checkAndUpdateOnStartup() {
     const lastUpdate = result.rows[0]?.last_update
     const now = new Date()
 
-    let batchSize = 20
+    let batchSize = 41
 
     if (!lastUpdate) {
       console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю полный батч (480)...')
-      batchSize = 480
+      batchSize = 984
     } else {
       const lastTime = new Date(lastUpdate).getTime()
       const diffHours = (now.getTime() - lastTime) / (1000 * 60 * 60)
       
       // Если прошло больше 24 часов, считаем сколько нужно обновить (20 в час, но не больше 480)
       if (diffHours >= 24) {
-         batchSize = Math.min(480, Math.max(20, Math.floor(diffHours * 20)))
+         batchSize = Math.min(984, Math.max(41, Math.floor(diffHours * 41)))
          console.log(`🕒 Прошло ${diffHours.toFixed(1)} ч. Запускаю обновление (батч: ${batchSize})...`)
       } else {
          console.log(`🕒 Прошло ${diffHours.toFixed(1)} ч. (меньше 24). Пропускаю.`)

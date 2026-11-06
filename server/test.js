@@ -42,12 +42,13 @@ async function syncMovie(tmdbId) {
     const imdbId = data.external_ids?.imdb_id || null
     const type = isTV ? 'TV_SERIES' : 'FILM'
 
+    // Убрали tmdb_last_synced_at, оставили last_checked_at
     await pool.query(`
       UPDATE movies SET
         name_ru = $1, name_en = $2, name_original = $3, year = $4, type = $5,
         poster_url = $6, poster_url_preview = $7, rating_imdb = $8,
         description = $9, film_length = $10, slogan = $11, imdb_id = $12,
-        tmdb_last_synced_at = NOW(), last_checked_at = NOW()
+        last_checked_at = NOW()
       WHERE tmdb_id = $13
     `, [title, originalTitle, originalTitle, year, type, posterUrl, posterPreview, rating, description, filmLength, slogan, imdbId, tmdbId])
 
@@ -78,22 +79,35 @@ async function syncMovie(tmdbId) {
           }
           await sleep(100)
         } catch (err) {
-          // Игнорируем ошибки отдельных сезонов
+          console.log(`\n  ⚠️ Ошибка сезона ${season.season_number}: ${err.message}`)
         }
       }
     }
     return true
   } catch (err) {
+    console.log(`\n  💥 Ошибка: ${err.message}`)
     return false
   }
 }
 
 async function syncAll() {
-  console.log('🚀 Запуск полной синхронизации из TMDB...')
+  console.log('🚀 Запуск синхронизации пачкой по 150...')
   
-  // Исключаем ID = 0 на всякий случай
-  const { rows } = await pool.query('SELECT tmdb_id FROM movies WHERE tmdb_id > 0 ORDER BY tmdb_id ASC')
-  console.log(`Найдено ${rows.length} фильмов/сериалов.\n`)
+  // Берем 150 фильмов с самыми старыми датами (или NULL)
+  const { rows } = await pool.query(`
+    SELECT tmdb_id 
+    FROM movies 
+    WHERE tmdb_id > 0 
+    ORDER BY last_checked_at ASC NULLS FIRST 
+    LIMIT 150
+  `)
+  
+  if (rows.length === 0) {
+    console.log('✅ Все фильмы уже обновлены!')
+    return
+  }
+
+  console.log(`Найдено ${rows.length} фильмов для обновления.\n`)
 
   let success = 0, failed = 0
 
@@ -102,13 +116,18 @@ async function syncAll() {
     process.stdout.write(`[${i + 1}/${rows.length}] ID ${tmdbId}... `)
     
     const ok = await syncMovie(tmdbId)
-    if (ok) { console.log('✅'); success++ }
-    else { console.log('❌'); failed++ }
+    if (ok) { 
+      console.log('✅')
+      success++ 
+    } else { 
+      console.log('❌')
+      failed++ 
+    }
 
-    await sleep(100)
+    await sleep(150) // Пауза между запросами
   }
 
-  console.log(`\n🏁 Синхронизация завершена! ✅ ${success} / ❌ ${failed}`)
+  console.log(`\n🏁 Пачка завершена! ✅ ${success} / ❌ ${failed}`)
   process.exit(0)
 }
 
