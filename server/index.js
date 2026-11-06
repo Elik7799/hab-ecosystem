@@ -162,6 +162,79 @@ async function detectTmdbType(tmdbId) {
   }
 }
 
+async function syncMovieRelations(tmdbId, isTV = false) {
+  try {
+    // Определяем, является ли контент сериалом (для TMDB это влияет на эндпоинты)
+    const endpoint = isTV ? 'tv' : 'movie'
+
+    // 1. Получаем рекомендации (recommendations)
+    const recData = await tmdbFetch(
+      `${TMDB_BASE}/${endpoint}/${tmdbId}/recommendations?language=ru-RU&page=1`
+    )
+    const recommendations = recData.results || []
+
+    // 2. Получаем похожие (similar)
+    const simData = await tmdbFetch(
+      `${TMDB_BASE}/${endpoint}/${tmdbId}/similar?language=ru-RU&page=1`
+    )
+    const similars = simData.results || []
+
+    // 3. Получаем коллекцию (только для фильмов)
+    let collectionParts = []
+    if (!isTV) {
+      // Сначала получаем детали фильма, чтобы узнать belongs_to_collection
+      const details = await tmdbFetch(
+        `${TMDB_BASE}/movie/${tmdbId}?language=ru-RU`
+      )
+      if (details.belongs_to_collection) {
+        const collectionId = details.belongs_to_collection.id
+        // Запрашиваем коллекцию, чтобы получить все части
+        const collectionData = await tmdbFetch(
+          `${TMDB_BASE}/collection/${collectionId}?language=ru-RU`
+        )
+        collectionParts = collectionData.parts || []
+      }
+    }
+
+    // Объединяем все связанные фильмы, исключая сам текущий
+    const allRelated = [
+      ...recommendations.map(item => ({ ...item, relationType: 'RECOMMENDATION' })),
+      ...similars.map(item => ({ ...item, relationType: 'SIMILAR' })),
+      ...collectionParts
+        .filter(part => part.id !== tmdbId) // исключаем сам фильм
+        .map(item => ({ ...item, relationType: 'SEQUEL' })) // для коллекции используем тип SEQUEL
+    ]
+
+    // Удаляем старые связи для этого фильма
+    await pool.query('DELETE FROM movie_relations WHERE movie_id = $1', [tmdbId])
+
+    // Сохраняем новые связи
+    for (const item of allRelated) {
+      const relatedId = item.id
+      if (!relatedId || relatedId === tmdbId) continue
+
+      const nameRu = item.title || item.name || '—'
+      const nameEn = item.original_title || item.original_name || '—'
+      const nameOriginal = item.original_title || item.original_name || '—'
+      const year = parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0
+      const posterUrl = item.poster_path ? `${IMAGE_BASE}w500${item.poster_path}` : null
+      const posterPreview = item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null
+
+      await pool.query(
+        `INSERT INTO movie_relations 
+          (movie_id, related_movie_id, relation_type, name_ru, name_en, name_original, year, poster_url, poster_url_preview)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT DO NOTHING`,
+        [tmdbId, relatedId, item.relationType, nameRu, nameEn, nameOriginal, year, posterUrl, posterPreview]
+      )
+    }
+
+    console.log(`  🔗 Связи для ${tmdbId} обновлены (${allRelated.length} шт.)`)
+  } catch (err) {
+    console.error(`  ⚠️ Ошибка синхронизации связей для ${tmdbId}:`, err.message)
+  }
+}
+
 /**
  * Загружает/обновляет фильм или сериал из TMDB в БД.
  */
@@ -226,6 +299,8 @@ async function upsertTmdbMovie(tmdbId) {
   if (isTV && data.seasons) {
     await syncTmdbSeasons(tmdbId, data.seasons)
   }
+
+  await syncMovieRelations(tmdbId, isTV)
 
   return { tmdbId, type, isTV }
 }
@@ -567,22 +642,45 @@ app.get('/api/kinopoisk/:id/facts', authMiddleware, (req, res) => {
 app.get('/api/kinopoisk/:id/relations', authMiddleware, async (req, res) => {
   const tmdbId = parseInt(req.params.id)
   try {
+    // Проверяем, есть ли связи в БД
+    const existing = await pool.query(
+      'SELECT 1 FROM movie_relations WHERE movie_id = $1 LIMIT 1',
+      [tmdbId]
+    )
+    if (existing.rows.length === 0) {
+      // Если связей нет — синхронизируем
+      const movie = await pool.query('SELECT type FROM movies WHERE tmdb_id = $1', [tmdbId])
+      const isTV = movie.rows[0]?.type === 'TV_SERIES' || movie.rows[0]?.type === 'MINI_SERIES'
+      await syncMovieRelations(tmdbId, isTV)
+    }
+
     const result = await pool.query(
       `SELECT related_movie_id AS "kinopoiskId", relation_type AS "relationType",
          name_ru AS "nameRu", name_en AS "nameEn", name_original AS "nameOriginal",
          year, poster_url AS "posterUrl", poster_url_preview AS "posterUrlPreview"
-       FROM movie_relations WHERE movie_id = $1 AND relation_type IN ('SIMILAR', 'RECOMMENDATION')`,
+       FROM movie_relations WHERE movie_id = $1 AND relation_type IN ('SEQUEL', 'PREQUEL', 'REMAKE')`,
       [tmdbId]
     )
     res.json({ items: result.rows })
   } catch (err) {
-    res.status(500).json({ error: 'Ошибка' })
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки связанных фильмов' })
   }
 })
 
 app.get('/api/kinopoisk/:id/similars', authMiddleware, async (req, res) => {
   const tmdbId = parseInt(req.params.id)
   try {
+    const existing = await pool.query(
+      'SELECT 1 FROM movie_relations WHERE movie_id = $1 LIMIT 1',
+      [tmdbId]
+    )
+    if (existing.rows.length === 0) {
+      const movie = await pool.query('SELECT type FROM movies WHERE tmdb_id = $1', [tmdbId])
+      const isTV = movie.rows[0]?.type === 'TV_SERIES' || movie.rows[0]?.type === 'MINI_SERIES'
+      await syncMovieRelations(tmdbId, isTV)
+    }
+
     const result = await pool.query(
       `SELECT related_movie_id AS "filmId", relation_type AS "relationType",
          name_ru AS "nameRu", name_en AS "nameEn", name_original AS "nameOriginal",
@@ -592,7 +690,8 @@ app.get('/api/kinopoisk/:id/similars', authMiddleware, async (req, res) => {
     )
     res.json({ items: result.rows })
   } catch (err) {
-    res.status(500).json({ error: 'Ошибка' })
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки похожих фильмов' })
   }
 })
 
@@ -1403,7 +1502,7 @@ app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
 
 // ───────────────────────── BACKGROUND UPDATE ─────────────────────────
 
-async function updateOldMovies(batchSize = 20) {
+async function updateOldMovies(batchSize = 41) {
   console.log(`🕒 Запуск фонового обновления из TMDB... Батч: ${batchSize}`)
   
   try {
@@ -1421,10 +1520,12 @@ async function updateOldMovies(batchSize = 20) {
     }
 
     let success = 0, failed = 0
+    const processedIds = [] // <--- Массив для сохранения ID обновленных фильмов
 
     for (const row of result.rows) {
       try {
         await upsertTmdbMovie(row.tmdb_id)
+        processedIds.push(row.tmdb_id) // <--- Запоминаем ID
         success++
         console.log(`  ✓ ${row.tmdb_id} — обновлен`)
       } catch (err) {
@@ -1434,8 +1535,14 @@ async function updateOldMovies(batchSize = 20) {
       await new Promise(r => setTimeout(r, 250)) // Пауза 250мс
     }
 
-    // Отмечаем глобальное обновление
-    await pool.query(`UPDATE movies SET last_checked_at_all = NOW()`)
+    // Отмечаем глобальное обновление ТОЛЬКО для тех, кого обновили
+    if (processedIds.length > 0) {
+      await pool.query(
+        `UPDATE movies SET last_checked_at_all = NOW() WHERE tmdb_id = ANY($1)`, 
+        [processedIds]
+      )
+    }
+    
     console.log(`🏁 Обновление завершено: ✅ ${success} / ❌ ${failed}`)
     
   } catch (err) {
@@ -1452,7 +1559,7 @@ async function checkAndUpdateOnStartup() {
     let batchSize = 41
 
     if (!lastUpdate) {
-      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю полный батч (480)...')
+      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю полный батч (984)...')
       batchSize = 984
     } else {
       const lastTime = new Date(lastUpdate).getTime()
