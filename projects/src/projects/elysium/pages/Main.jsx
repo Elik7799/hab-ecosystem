@@ -26,22 +26,6 @@ const FILTERS = [
   { value: 'TV_SHOW', label: 'ТВ-Шоу' },
 ]
 
-// Одноразовая санитизация localStorage от битых значений
-try {
-  const raw = localStorage.getItem('main-movies')
-  if (raw) {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      localStorage.removeItem('main-movies')
-      localStorage.removeItem('main-page')
-      localStorage.removeItem('main-has-more')
-      localStorage.removeItem('main-total-pages')
-    }
-  }
-} catch {
-  localStorage.removeItem('main-movies')
-}
-
 export default function ElysiumMain() {
   const { token } = useAuth()
 
@@ -52,8 +36,7 @@ export default function ElysiumMain() {
     const saved = localStorage.getItem('main-movies')
     if (!saved) return []
     try {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed : []
+      return JSON.parse(saved) || []
     } catch {
       return []
     }
@@ -68,16 +51,7 @@ export default function ElysiumMain() {
     const valid = CATEGORIES.some((c) => c.value === saved)
     return valid ? saved : 'TOP_POPULAR_ALL'
   })
-  const [loading, setLoading] = useState(() => {
-    // Если восстановили хоть что-то — не показываем скелетон
-    const savedMovies = localStorage.getItem('main-movies')
-    const savedSearching = localStorage.getItem('main-is-searching') === 'true'
-    const savedQuery = (localStorage.getItem('main-query') || '').trim()
-    const hasRestoredMovies = !!savedMovies && savedMovies !== '[]'
-    if (hasRestoredMovies) return false
-    if (savedSearching && savedQuery) return false
-    return true
-  })
+  const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
   const [isSearching, setIsSearching] = useState(
@@ -93,13 +67,7 @@ export default function ElysiumMain() {
     () => Number(localStorage.getItem('main-total-pages')) || 1
   )
 
-  const restoredFromStorage = useRef(Array.isArray(movies) && movies.length > 0)
-  const restoredSearchFromStorage = useRef(
-    Array.isArray(movies) &&
-    movies.length > 0 &&
-    localStorage.getItem('main-is-searching') === 'true' &&
-    (localStorage.getItem('main-query') || '').trim() !== ''
-  )
+  const restoredFromStorage = useRef(movies.length > 0)
 
   const fetchPopular = useCallback(
     async (pageNum, append = false) => {
@@ -148,27 +116,22 @@ export default function ElysiumMain() {
 
   // Сброс при смене категории или фильтра
   useEffect(() => {
-    if (!isSearching) return
+    if (!token || isSearching) return
 
-    if (!query.trim()) {
-      setIsSearching(false)
-      setFilter('ALL')
-      fetchPopular(1, false)
+    if (restoredFromStorage.current) {
+      restoredFromStorage.current = false
+      setLoading(false)
       return
     }
 
-    // ← вот это: восстановились из localStorage — не ищем заново
-    if (restoredSearchFromStorage.current) {
-      restoredSearchFromStorage.current = false
-      return
-    }
-
-    const delay = setTimeout(() => {
-      searchMovies(query)
-    }, 500)
-
-    return () => clearTimeout(delay)
-  }, [query, isSearching, searchMovies, fetchPopular])
+    setMovies([])
+    setPage(1)
+    setHasMore(false)
+    setTotalPages(1)
+    window.scrollTo(0, 0)
+    localStorage.removeItem('main-scroll-y')
+    fetchPopular(1, false)
+  }, [token, category, filter, fetchPopular, isSearching])
 
   useEffect(() => {
     localStorage.setItem('main-category', category)
