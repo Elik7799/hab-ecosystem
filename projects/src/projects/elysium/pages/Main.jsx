@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName } from '../../../utils/ElysiumMovieName'
@@ -29,8 +29,18 @@ const FILTERS = [
 export default function ElysiumMain() {
   const { token } = useAuth()
 
-  const [query, setQuery] = useState('')
-  const [movies, setMovies] = useState([])
+  const [query, setQuery] = useState(
+    () => localStorage.getItem('main-query') || ''
+  )
+  const [movies, setMovies] = useState(() => {
+    const saved = localStorage.getItem('main-movies')
+    if (!saved) return []
+    try {
+      return JSON.parse(saved) || []
+    } catch {
+      return []
+    }
+  })
   const [filter, setFilter] = useState(() => {
     const saved = localStorage.getItem('main-filter')
     const valid = FILTERS.some((c) => c.value === saved)
@@ -44,11 +54,20 @@ export default function ElysiumMain() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
+  const [isSearching, setIsSearching] = useState(
+    () => localStorage.getItem('main-is-searching') === 'true'
+  )
+  const [page, setPage] = useState(
+    () => Number(localStorage.getItem('main-page')) || 1
+  )
+  const [hasMore, setHasMore] = useState(
+    () => localStorage.getItem('main-has-more') === 'true'
+  )
+  const [totalPages, setTotalPages] = useState(
+    () => Number(localStorage.getItem('main-total-pages')) || 1
+  )
 
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(false)
-  const [totalPages, setTotalPages] = useState(1)
+  const restoredFromStorage = useRef(movies.length > 0)
 
   const fetchPopular = useCallback(
     async (pageNum, append = false) => {
@@ -60,7 +79,6 @@ export default function ElysiumMain() {
       setError('')
 
       try {
-        // Передаем category и type (filter) в запросе
         const res = await fetch(
           `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}&category=${category}&type=${filter}`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -70,8 +88,6 @@ export default function ElysiumMain() {
 
         const data = await res.json()
 
-        // Для API-категорий (TOP_250 и т.д.) фильтрация по типу происходит на клиенте,
-        // так как API не поддерживает type в collections.
         let items = data.items || []
         if (category !== 'MARVEL' && filter !== 'ALL') {
           items = items.filter((m) => m.type === filter)
@@ -101,8 +117,19 @@ export default function ElysiumMain() {
   // Сброс при смене категории или фильтра
   useEffect(() => {
     if (!token || isSearching) return
+
+    if (restoredFromStorage.current) {
+      restoredFromStorage.current = false
+      setLoading(false)
+      return
+    }
+
     setMovies([])
     setPage(1)
+    setHasMore(false)
+    setTotalPages(1)
+    window.scrollTo(0, 0)
+    localStorage.removeItem('main-scroll-y')
     fetchPopular(1, false)
   }, [token, category, filter, fetchPopular, isSearching])
 
@@ -114,10 +141,54 @@ export default function ElysiumMain() {
     localStorage.setItem('main-filter', filter)
   }, [filter])
 
+  useEffect(() => {
+    localStorage.setItem('main-query', query)
+  }, [query])
+
+  useEffect(() => {
+    localStorage.setItem('main-is-searching', String(isSearching))
+  }, [isSearching])
+
+  useEffect(() => {
+    localStorage.setItem('main-movies', JSON.stringify(movies))
+  }, [movies])
+
+  useEffect(() => {
+    localStorage.setItem('main-page', String(page))
+  }, [page])
+
+  useEffect(() => {
+    localStorage.setItem('main-has-more', String(hasMore))
+  }, [hasMore])
+
+  useEffect(() => {
+    localStorage.setItem('main-total-pages', String(totalPages))
+  }, [totalPages])
+
+  // Сохраняем скролл при размонтировании (уход/возврат)
+  useEffect(() => {
+    return () => {
+      localStorage.setItem('main-scroll-y', String(window.scrollY))
+    }
+  }, [])
+
+  // Восстанавливаем скролл после монтирования
+  useLayoutEffect(() => {
+    const savedY = Number(localStorage.getItem('main-scroll-y'))
+    if (!savedY) return
+
+    const raf = requestAnimationFrame(() => {
+      window.scrollTo(0, savedY)
+    })
+
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
   const searchMovies = useCallback(
     async (keyword) => {
       if (!token) return
-
+      window.scrollTo(0, 0)
+      localStorage.removeItem('main-scroll-y')
       setLoading(true)
       setError('')
 
@@ -172,6 +243,10 @@ export default function ElysiumMain() {
     setIsSearching(false)
     setFilter('ALL')
     setCategory('MARVEL')
+    localStorage.removeItem('main-query')
+    localStorage.removeItem('main-is-searching')
+    localStorage.removeItem('main-scroll-y')
+    window.scrollTo(0, 0)
     fetchPopular(1, false)
   }
 
