@@ -26,21 +26,36 @@ const FILTERS = [
   { value: 'TV_SHOW', label: 'ТВ-Шоу' },
 ]
 
+// Флаг "это возврат внутри сессии", а не новый заход.
+// sessionStorage живёт, пока открыта вкладка, и очищается при её закрытии.
+const SESSION_KEY = 'main-session-active'
+const isSessionRestore = () => sessionStorage.getItem(SESSION_KEY) === 'true'
+
+// Безопасное чтение массива фильмов из localStorage
+function readSavedMovies() {
+  if (!isSessionRestore()) return []
+  const saved = localStorage.getItem('main-movies')
+  if (!saved) return []
+  try {
+    const parsed = JSON.parse(saved)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 export default function ElysiumMain() {
   const { token } = useAuth()
 
+  // Помечаем сессию как активную. Если вкладку закрыть — sessionStorage очистится сам.
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_KEY, 'true')
+  }, [])
+
   const [query, setQuery] = useState(
-    () => localStorage.getItem('main-query') || ''
+    () => (isSessionRestore() ? localStorage.getItem('main-query') || '' : '')
   )
-  const [movies, setMovies] = useState(() => {
-    const saved = localStorage.getItem('main-movies')
-    if (!saved) return []
-    try {
-      return JSON.parse(saved) || []
-    } catch {
-      return []
-    }
-  })
+  const [movies, setMovies] = useState(readSavedMovies)
   const [filter, setFilter] = useState(() => {
     const saved = localStorage.getItem('main-filter')
     const valid = FILTERS.some((c) => c.value === saved)
@@ -51,23 +66,26 @@ export default function ElysiumMain() {
     const valid = CATEGORIES.some((c) => c.value === saved)
     return valid ? saved : 'TOP_POPULAR_ALL'
   })
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => readSavedMovies().length === 0)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
   const [isSearching, setIsSearching] = useState(
-    () => localStorage.getItem('main-is-searching') === 'true'
+    () => isSessionRestore() && localStorage.getItem('main-is-searching') === 'true'
   )
   const [page, setPage] = useState(
-    () => Number(localStorage.getItem('main-page')) || 1
+    () => (isSessionRestore() ? Number(localStorage.getItem('main-page')) || 1 : 1)
   )
   const [hasMore, setHasMore] = useState(
-    () => localStorage.getItem('main-has-more') === 'true'
+    () => isSessionRestore() && localStorage.getItem('main-has-more') === 'true'
   )
   const [totalPages, setTotalPages] = useState(
-    () => Number(localStorage.getItem('main-total-pages')) || 1
+    () => (isSessionRestore() ? Number(localStorage.getItem('main-total-pages')) || 1 : 1)
   )
 
   const restoredFromStorage = useRef(movies.length > 0)
+  const restoredSearchFromStorage = useRef(
+    movies.length > 0 && isSearching && query.trim() !== ''
+  )
 
   const fetchPopular = useCallback(
     async (pageNum, append = false) => {
@@ -114,7 +132,7 @@ export default function ElysiumMain() {
     [token, category, filter]
   )
 
-  // Сброс при смене категории или фильтра
+  // Сброс при смене категории/фильтра или загрузка первой страницы
   useEffect(() => {
     if (!token || isSearching) return
 
@@ -165,7 +183,7 @@ export default function ElysiumMain() {
     localStorage.setItem('main-total-pages', String(totalPages))
   }, [totalPages])
 
-  // Сохраняем скролл при размонтировании (уход/возврат)
+  // Сохраняем скролл при размонтировании
   useEffect(() => {
     return () => {
       localStorage.setItem('main-scroll-y', String(window.scrollY))
@@ -223,6 +241,12 @@ export default function ElysiumMain() {
       setIsSearching(false)
       setFilter('ALL')
       fetchPopular(1, false)
+      return
+    }
+
+    // Если только что восстановились из localStorage — не ищем заново
+    if (restoredSearchFromStorage.current) {
+      restoredSearchFromStorage.current = false
       return
     }
 
