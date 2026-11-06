@@ -22,13 +22,11 @@ async function tmdbFetch(url) {
 
 async function syncMovie(tmdbId) {
   try {
-    // 1. Пытаемся получить как сериал
     let data, isTV = false
     try {
       data = await tmdbFetch(`${TMDB_BASE}/tv/${tmdbId}?language=ru-RU&append_to_response=external_ids`)
       isTV = true
     } catch (e) {
-      // Если не сериал, получаем как фильм
       data = await tmdbFetch(`${TMDB_BASE}/movie/${tmdbId}?language=ru-RU&append_to_response=external_ids`)
     }
 
@@ -44,29 +42,25 @@ async function syncMovie(tmdbId) {
     const imdbId = data.external_ids?.imdb_id || null
     const type = isTV ? 'TV_SERIES' : 'FILM'
 
-    // 2. Обновляем таблицу movies
     await pool.query(`
       UPDATE movies SET
         name_ru = $1, name_en = $2, name_original = $3, year = $4, type = $5,
         poster_url = $6, poster_url_preview = $7, rating_imdb = $8,
         description = $9, film_length = $10, slogan = $11, imdb_id = $12,
-        tmdb_last_synced_at = NOW()
+        tmdb_last_synced_at = NOW(), last_checked_at = NOW()
       WHERE tmdb_id = $13
     `, [title, originalTitle, originalTitle, year, type, posterUrl, posterPreview, rating, description, filmLength, slogan, imdbId, tmdbId])
 
-    // 3. Жанры
     await pool.query('DELETE FROM movie_genres WHERE movie_id = $1', [tmdbId])
     for (const g of data.genres || []) {
       await pool.query('INSERT INTO movie_genres (movie_id, genre) VALUES ($1, $2) ON CONFLICT DO NOTHING', [tmdbId, g.name])
     }
 
-    // 4. Страны
     await pool.query('DELETE FROM movie_countries WHERE movie_id = $1', [tmdbId])
     for (const c of data.production_countries || []) {
       await pool.query('INSERT INTO movie_countries (movie_id, country) VALUES ($1, $2) ON CONFLICT DO NOTHING', [tmdbId, c.name])
     }
 
-    // 5. Сезоны и эпизоды
     if (isTV && data.seasons) {
       const validSeasons = data.seasons.filter(s => s.season_number > 0)
       for (const season of validSeasons) {
@@ -82,16 +76,14 @@ async function syncMovie(tmdbId) {
               [tmdbId, ep.season_number, ep.episode_number, ep.name || null, ep.air_date || null, ep.overview || null, ep.id]
             )
           }
-          await sleep(100) // Пауза между сезонами
+          await sleep(100)
         } catch (err) {
-          console.error(`  ⚠️ Ошибка сезона ${season.season_number}: ${err.message}`)
+          // Игнорируем ошибки отдельных сезонов
         }
       }
     }
-
     return true
   } catch (err) {
-    console.error(`💥 Ошибка для ${tmdbId}: ${err.message}`)
     return false
   }
 }
@@ -99,31 +91,24 @@ async function syncMovie(tmdbId) {
 async function syncAll() {
   console.log('🚀 Запуск полной синхронизации из TMDB...')
   
-  const { rows } = await pool.query('SELECT tmdb_id FROM movies ORDER BY tmdb_id ASC')
+  // Исключаем ID = 0 на всякий случай
+  const { rows } = await pool.query('SELECT tmdb_id FROM movies WHERE tmdb_id > 0 ORDER BY tmdb_id ASC')
   console.log(`Найдено ${rows.length} фильмов/сериалов.\n`)
 
-  let success = 0
-  let failed = 0
+  let success = 0, failed = 0
 
   for (let i = 0; i < rows.length; i++) {
     const tmdbId = rows[i].tmdb_id
     process.stdout.write(`[${i + 1}/${rows.length}] ID ${tmdbId}... `)
     
     const ok = await syncMovie(tmdbId)
-    if (ok) {
-      console.log('✅')
-      success++
-    } else {
-      console.log('❌')
-      failed++
-    }
+    if (ok) { console.log('✅'); success++ }
+    else { console.log('❌'); failed++ }
 
-    await sleep(100) // 100 мс = 10 запросов в секунду (безопасно)
+    await sleep(100)
   }
 
-  console.log(`\n🏁 Синхронизация завершена!`)
-  console.log(`✅ Успешно: ${success}`)
-  console.log(`❌ Ошибок: ${failed}`)
+  console.log(`\n🏁 Синхронизация завершена! ✅ ${success} / ❌ ${failed}`)
   process.exit(0)
 }
 

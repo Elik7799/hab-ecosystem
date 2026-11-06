@@ -1401,6 +1401,82 @@ app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
 })
 
+// ───────────────────────── BACKGROUND UPDATE ─────────────────────────
+
+async function updateOldMovies(batchSize = 20) {
+  console.log(`🕒 Запуск фонового обновления из TMDB... Батч: ${batchSize}`)
+  
+  try {
+    // Находим самые старые по last_checked_at
+    const result = await pool.query(`
+      SELECT tmdb_id FROM movies 
+      WHERE tmdb_id > 0
+      ORDER BY COALESCE(last_checked_at, created_at) ASC 
+      LIMIT $1
+    `, [batchSize])
+
+    if (result.rows.length === 0) {
+      console.log('✅ Нет фильмов для обновления')
+      return
+    }
+
+    let success = 0, failed = 0
+
+    for (const row of result.rows) {
+      try {
+        await upsertTmdbMovie(row.tmdb_id)
+        success++
+        console.log(`  ✓ ${row.tmdb_id} — обновлен`)
+      } catch (err) {
+        failed++
+        console.error(`  ❌ ${row.tmdb_id} — ошибка: ${err.message}`)
+      }
+      await new Promise(r => setTimeout(r, 250)) // Пауза 250мс
+    }
+
+    // Отмечаем глобальное обновление
+    await pool.query(`UPDATE movies SET last_checked_at_all = NOW()`)
+    console.log(`🏁 Обновление завершено: ✅ ${success} / ❌ ${failed}`)
+    
+  } catch (err) {
+    console.error('Ошибка в updateOldMovies:', err)
+  }
+}
+
+async function checkAndUpdateOnStartup() {
+  try {
+    const result = await pool.query(`SELECT MAX(last_checked_at_all) as last_update FROM movies`)
+    const lastUpdate = result.rows[0]?.last_update
+    const now = new Date()
+
+    let batchSize = 20
+
+    if (!lastUpdate) {
+      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю полный батч (480)...')
+      batchSize = 480
+    } else {
+      const lastTime = new Date(lastUpdate).getTime()
+      const diffHours = (now.getTime() - lastTime) / (1000 * 60 * 60)
+      
+      // Если прошло больше 24 часов, считаем сколько нужно обновить (20 в час, но не больше 480)
+      if (diffHours >= 24) {
+         batchSize = Math.min(480, Math.max(20, Math.floor(diffHours * 20)))
+         console.log(`🕒 Прошло ${diffHours.toFixed(1)} ч. Запускаю обновление (батч: ${batchSize})...`)
+      } else {
+         console.log(`🕒 Прошло ${diffHours.toFixed(1)} ч. (меньше 24). Пропускаю.`)
+         return
+      }
+    }
+    
+    await updateOldMovies(batchSize)
+
+  } catch (err) {
+    console.error('Ошибка проверки времени обновления:', err)
+  }
+}
+
+// Запускаем через 10 секунд после старта сервера
+setTimeout(checkAndUpdateOnStartup, 10000)
 // ───────────────────────── START ─────────────────────────
 
 httpServer.listen(process.env.PORT, () => {
