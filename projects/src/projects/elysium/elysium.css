@@ -472,6 +472,7 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 15px;
+  max-width: 1050px;
 }
 
 .main-moviecard {

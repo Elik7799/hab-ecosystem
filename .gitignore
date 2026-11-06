@@ -53,3 +53,5 @@ rulls.txt
 
 structure.txt
 schema_dump.sql
+fix-types.js
+fetch-movies.js
