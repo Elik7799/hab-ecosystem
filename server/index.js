@@ -2944,7 +2944,7 @@ async function checkAndUpdateOnStartup() {
 
     const diffHours = (nowTime - lastTime) / (1000 * 60 * 60)
 
-    const batchSize = Math.min(300, Math.max(1, Math.floor(diffHours * 12.5)))
+    const batchSize = Math.min(300, Math.max(1, Math.floor(diffHours * 18.75)))
 
     if (diffHours > 1) {
       console.log(
