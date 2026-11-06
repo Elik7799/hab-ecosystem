@@ -51,6 +51,5 @@ server/update.log
 # ===== ЛИЧНЫЕ ЗАМЕТКИ =====
 rulls.txt
 
-fetch-movies.js
 structure.txt
 schema_dump.sql

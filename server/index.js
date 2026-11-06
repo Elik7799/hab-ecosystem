@@ -22,13 +22,10 @@ const TMDB_TOKEN = process.env.TMDB_ACCESS_TOKEN
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/'
 
-// ───────────────────────── SOCKET.IO ─────────────────────────
+// ═════════════════════════ SOCKET.IO ═════════════════════════
 
 const httpServer = http.createServer(app)
-const io = new Server(httpServer, {
-  cors: { origin: '*', credentials: true },
-})
-
+const io = new Server(httpServer, { cors: { origin: '*', credentials: true } })
 const onlineUsers = new Map()
 
 io.use((socket, next) => {
@@ -39,103 +36,82 @@ io.use((socket, next) => {
     socket.userId = decoded.id
     socket.userName = decoded.name
     next()
-  } catch (err) {
+  } catch {
     next(new Error('Неверный токен'))
   }
 })
 
 io.on('connection', (socket) => {
   const userId = socket.userId
-  console.log(`🟢 Подключился: @${socket.userName} (id: ${userId})`)
-
   onlineUsers.set(userId, socket.id)
   socket.broadcast.emit('user_online', { userId })
   socket.emit('online_users', Array.from(onlineUsers.keys()))
-
   socket.activeRooms = new Set()
 
   socket.on('match:join_room', ({ roomId }) => {
     socket.join(`match_room_${roomId}`)
     socket.activeRooms.add(roomId)
   })
-
   socket.on('match:leave_room', ({ roomId }) => {
     socket.leave(`match_room_${roomId}`)
     socket.activeRooms.delete(roomId)
   })
 
   socket.on('disconnect', async () => {
-    console.log(`🔴 Отключился: @${socket.userName}`)
     onlineUsers.delete(userId)
     socket.broadcast.emit('user_offline', { userId })
-
     for (const roomId of socket.activeRooms) {
       try {
-        const roomResult = await pool.query(
-          `SELECT id, status FROM match_rooms WHERE id = $1`, [roomId]
-        )
-        if (roomResult.rows.length === 0) continue
-        if (roomResult.rows[0].status === 'cancelled') continue
-
+        const r = await pool.query('SELECT id, status FROM match_rooms WHERE id = $1', [roomId])
+        if (r.rows.length === 0 || r.rows[0].status === 'cancelled') continue
         setTimeout(async () => {
           try {
-            const checkUser = await pool.query(
-              `SELECT * FROM match_participants WHERE room_id = $1 AND user_id = $2`,
+            if (onlineUsers.has(userId)) return
+            const p = await pool.query(
+              'SELECT * FROM match_participants WHERE room_id = $1 AND user_id = $2',
               [roomId, userId]
             )
-            if (checkUser.rows.length === 0) return
-            if (onlineUsers.has(userId)) return
-
+            if (p.rows.length === 0) return
             await pool.query(
-              `UPDATE match_rooms SET status = 'cancelled', cancelled_by = $1, cancelled_at = NOW() WHERE id = $2 AND status != 'cancelled'`,
+              `UPDATE match_rooms SET status = 'cancelled', cancelled_by = $1, cancelled_at = NOW()
+               WHERE id = $2 AND status != 'cancelled'`,
               [userId, roomId]
             )
             io.to(`match_room_${roomId}`).emit('match:cancelled', {
               roomId, cancelledByName: socket.userName, reason: 'disconnect',
             })
-          } catch (err) {
-            console.error('Ошибка обработки отключения:', err.message)
-          }
+          } catch (err) { console.error('disconnect handler:', err.message) }
         }, 30000)
-      } catch (err) {
-        console.error('Ошибка при disconnect:', err.message)
-      }
+      } catch (err) { console.error('disconnect room lookup:', err.message) }
     }
   })
 })
 
 function emitNotification(userId, data) {
-  const socketId = onlineUsers.get(userId)
-  if (socketId) io.to(socketId).emit('notification', data)
+  const sid = onlineUsers.get(userId)
+  if (sid) io.to(sid).emit('notification', data)
 }
 
 function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization
-  if (!authHeader) return res.status(401).json({ error: 'Нет токена' })
-  const token = authHeader.split(' ')[1]
+  const h = req.headers.authorization
+  if (!h) return res.status(401).json({ error: 'Нет токена' })
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
-    req.user = decoded
+    req.user = jwt.verify(h.split(' ')[1], process.env.JWT_SECRET)
     next()
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: 'Неверный токен' })
   }
 }
 
-// ───────────────────────── TMDB HELPERS ─────────────────────────
+// ═════════════════════════ TMDB HELPERS ═════════════════════════
 
 async function tmdbFetch(url, retries = 2) {
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${TMDB_TOKEN}` },
-  })
-
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${TMDB_TOKEN}` } })
   if (res.status === 429 && retries > 0) {
-    const retryAfter = parseInt(res.headers.get('retry-after') || '10')
-    console.log(`  ⏸️ Rate limit TMDB, ждём ${retryAfter}s...`)
-    await new Promise(r => setTimeout(r, retryAfter * 1000))
+    const ra = parseInt(res.headers.get('retry-after') || '10')
+    await new Promise(r => setTimeout(r, ra * 1000))
     return tmdbFetch(url, retries - 1)
   }
-
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`TMDB HTTP ${res.status}: ${text.slice(0, 200)}`)
@@ -143,115 +119,31 @@ async function tmdbFetch(url, retries = 2) {
   return res.json()
 }
 
-/**
- * Проверяет, сериал это или фильм. Кэширует результат в БД.
- */
-async function detectTmdbType(tmdbId) {
-  // Проверяем в БД
-  const existing = await pool.query('SELECT type FROM movies WHERE tmdb_id = $1', [tmdbId])
-  if (existing.rows.length > 0 && existing.rows[0].type) {
-    return existing.rows[0].type
-  }
-
-  // Пробуем tv, потом movie
-  try {
-    const tv = await tmdbFetch(`${TMDB_BASE}/tv/${tmdbId}?language=ru-RU`)
-    return 'TV_SERIES'
-  } catch {
-    return 'FILM'
-  }
+// 'movie' | 'tv' → 'FILM' | 'TV_SERIES'
+function pathTypeToDb(pt) {
+  return pt === 'tv' ? 'TV_SERIES' : 'FILM'
 }
 
-async function syncMovieRelations(tmdbId, isTV = false) {
-  try {
-    // Определяем, является ли контент сериалом (для TMDB это влияет на эндпоинты)
-    const endpoint = isTV ? 'tv' : 'movie'
+// ═════════════════════════ UPSERT ═════════════════════════
 
-    // 1. Получаем рекомендации (recommendations)
-    const recData = await tmdbFetch(
-      `${TMDB_BASE}/${endpoint}/${tmdbId}/recommendations?language=ru-RU&page=1`
-    )
-    const recommendations = recData.results || []
-
-    // 2. Получаем похожие (similar)
-    const simData = await tmdbFetch(
-      `${TMDB_BASE}/${endpoint}/${tmdbId}/similar?language=ru-RU&page=1`
-    )
-    const similars = simData.results || []
-
-    // 3. Получаем коллекцию (только для фильмов)
-    let collectionParts = []
-    if (!isTV) {
-      // Сначала получаем детали фильма, чтобы узнать belongs_to_collection
-      const details = await tmdbFetch(
-        `${TMDB_BASE}/movie/${tmdbId}?language=ru-RU`
-      )
-      if (details.belongs_to_collection) {
-        const collectionId = details.belongs_to_collection.id
-        // Запрашиваем коллекцию, чтобы получить все части
-        const collectionData = await tmdbFetch(
-          `${TMDB_BASE}/collection/${collectionId}?language=ru-RU`
-        )
-        collectionParts = collectionData.parts || []
-      }
-    }
-
-    // Объединяем все связанные фильмы, исключая сам текущий
-    const allRelated = [
-      ...recommendations.map(item => ({ ...item, relationType: 'RECOMMENDATION' })),
-      ...similars.map(item => ({ ...item, relationType: 'SIMILAR' })),
-      ...collectionParts
-        .filter(part => part.id !== tmdbId) // исключаем сам фильм
-        .map(item => ({ ...item, relationType: 'SEQUEL' })) // для коллекции используем тип SEQUEL
-    ]
-
-    // Удаляем старые связи для этого фильма
-    await pool.query('DELETE FROM movie_relations WHERE movie_id = $1', [tmdbId])
-
-    // Сохраняем новые связи
-    for (const item of allRelated) {
-      const relatedId = item.id
-      if (!relatedId || relatedId === tmdbId) continue
-
-      const nameRu = item.title || item.name || '—'
-      const nameEn = item.original_title || item.original_name || '—'
-      const nameOriginal = item.original_title || item.original_name || '—'
-      const year = parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0
-      const posterUrl = item.poster_path ? `${IMAGE_BASE}w500${item.poster_path}` : null
-      const posterPreview = item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null
-
-      await pool.query(
-        `INSERT INTO movie_relations 
-          (movie_id, related_movie_id, relation_type, name_ru, name_en, name_original, year, poster_url, poster_url_preview)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT DO NOTHING`,
-        [tmdbId, relatedId, item.relationType, nameRu, nameEn, nameOriginal, year, posterUrl, posterPreview]
-      )
-    }
-
-    console.log(`  🔗 Связи для ${tmdbId} обновлены (${allRelated.length} шт.)`)
-  } catch (err) {
-    console.error(`  ⚠️ Ошибка синхронизации связей для ${tmdbId}:`, err.message)
+async function upsertTmdbMovie(tmdbId, type) {
+  if (!['FILM', 'TV_SERIES'].includes(type)) {
+    throw new Error(`Invalid movie type: ${type}`)
   }
-}
-
-/**
- * Загружает/обновляет фильм или сериал из TMDB в БД.
- */
-async function upsertTmdbMovie(tmdbId) {
-  const type = await detectTmdbType(tmdbId)
-  const isTV = type === 'TV_SERIES' || type === 'MINI_SERIES'
+  const isTV = type === 'TV_SERIES'
   const endpoint = isTV ? 'tv' : 'movie'
 
   const data = await tmdbFetch(
     `${TMDB_BASE}/${endpoint}/${tmdbId}?language=ru-RU&append_to_response=external_ids`
   )
 
-  const title = data.title || data.name || '—'
-  const originalTitle = data.original_title || data.original_name || '—'
+  // Русское название — то, что TMDB отдал с language=ru-RU.
+  // Если русского перевода нет, TMDB вернёт original_title — это ок.
+  const nameRu = data.title || data.name || '—'
+  const nameOriginal = data.original_title || data.original_name || '—'
   const year = parseInt((data.release_date || data.first_air_date || '').slice(0, 4)) || 0
-  const posterUrl = data.poster_path ? `${IMAGE_BASE}w500${data.poster_path}` : '—'
-  const posterPreview = data.poster_path ? `${IMAGE_BASE}w200${data.poster_path}` : '—'
+  const posterUrl = data.poster_path ? `${IMAGE_BASE}w500${data.poster_path}` : null
+  const posterPreview = data.poster_path ? `${IMAGE_BASE}w200${data.poster_path}` : null
   const rating = data.vote_average || 0
   const description = data.overview || '—'
   const filmLength = isTV ? (data.episode_run_time?.[0] || 0) : (data.runtime || 0)
@@ -259,14 +151,14 @@ async function upsertTmdbMovie(tmdbId) {
   const imdbId = data.external_ids?.imdb_id || null
 
   await pool.query(`
-    INSERT INTO movies (tmdb_id, name_ru, name_en, name_original, year, type, poster_url, poster_url_preview, rating_imdb, description, film_length, slogan, imdb_id, last_checked_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-    ON CONFLICT (tmdb_id) DO UPDATE SET
+    INSERT INTO movies
+      (tmdb_id, type, name_ru, name_original, year, poster_url, poster_url_preview,
+       rating_imdb, description, film_length, slogan, imdb_id, last_checked_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+    ON CONFLICT (tmdb_id, type) DO UPDATE SET
       name_ru = EXCLUDED.name_ru,
-      name_en = EXCLUDED.name_en,
       name_original = EXCLUDED.name_original,
       year = EXCLUDED.year,
-      type = EXCLUDED.type,
       poster_url = EXCLUDED.poster_url,
       poster_url_preview = EXCLUDED.poster_url_preview,
       rating_imdb = EXCLUDED.rating_imdb,
@@ -275,124 +167,185 @@ async function upsertTmdbMovie(tmdbId) {
       slogan = EXCLUDED.slogan,
       imdb_id = COALESCE(EXCLUDED.imdb_id, movies.imdb_id),
       last_checked_at = NOW()
-  `, [tmdbId, title, originalTitle, originalTitle, year, type, posterUrl, posterPreview, rating, description, filmLength, slogan, imdbId])
+  `, [tmdbId, type, nameRu, nameOriginal, year, posterUrl, posterPreview,
+      rating, description, filmLength, slogan, imdbId])
 
   // Жанры
-  await pool.query('DELETE FROM movie_genres WHERE movie_id = $1', [tmdbId])
+  await pool.query('DELETE FROM movie_genres WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
   for (const g of data.genres || []) {
     await pool.query(
-      'INSERT INTO movie_genres (movie_id, genre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [tmdbId, g.name]
+      `INSERT INTO movie_genres (movie_id, movie_type, genre) VALUES ($1, $2, $3)
+       ON CONFLICT (movie_id, movie_type, genre) DO NOTHING`,
+      [tmdbId, type, g.name]
     )
   }
 
   // Страны
-  await pool.query('DELETE FROM movie_countries WHERE movie_id = $1', [tmdbId])
+  await pool.query('DELETE FROM movie_countries WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
   for (const c of data.production_countries || []) {
     await pool.query(
-      'INSERT INTO movie_countries (movie_id, country) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [tmdbId, c.name]
+      `INSERT INTO movie_countries (movie_id, movie_type, country) VALUES ($1, $2, $3)
+       ON CONFLICT (movie_id, movie_type, country) DO NOTHING`,
+      [tmdbId, type, c.name]
     )
   }
 
-  // Для сериалов — сезоны и эпизоды
   if (isTV && data.seasons) {
     await syncTmdbSeasons(tmdbId, data.seasons)
   }
 
-  await syncMovieRelations(tmdbId, isTV)
+  await syncMovieRelations(tmdbId, type)
 
   return { tmdbId, type, isTV }
 }
 
-/**
- * Синхронизирует сезоны и эпизоды в tmdb_episodes.
- */
 async function syncTmdbSeasons(tmdbId, seasons) {
-  const validSeasons = (seasons || []).filter(s => s.season_number > 0)
-
-  for (const season of validSeasons) {
+  const valid = (seasons || []).filter(s => s.season_number > 0)
+  for (const season of valid) {
     try {
-      const seasonData = await tmdbFetch(
+      const sd = await tmdbFetch(
         `${TMDB_BASE}/tv/${tmdbId}/season/${season.season_number}?language=ru-RU`
       )
-      for (const ep of seasonData.episodes || []) {
+      for (const ep of sd.episodes || []) {
         if (ep.episode_number == null) continue
-        await pool.query(
-          `INSERT INTO tmdb_episodes (movie_id, season_number, episode_number, name_ru, air_date, overview, tmdb_episode_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (movie_id, season_number, episode_number) DO UPDATE SET
-             name_ru = EXCLUDED.name_ru,
-             air_date = EXCLUDED.air_date,
-             overview = EXCLUDED.overview`,
-          [tmdbId, ep.season_number, ep.episode_number, ep.name || null, ep.air_date || null, ep.overview || null, ep.id]
-        )
+        await pool.query(`
+          INSERT INTO tmdb_episodes
+            (movie_id, movie_type, season_number, episode_number, name_ru, air_date, overview, tmdb_episode_id)
+          VALUES ($1, 'TV_SERIES', $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (movie_id, movie_type, season_number, episode_number) DO UPDATE SET
+            name_ru = EXCLUDED.name_ru,
+            air_date = EXCLUDED.air_date,
+            overview = EXCLUDED.overview`,
+          [tmdbId, ep.season_number, ep.episode_number, ep.name || null,
+           ep.air_date || null, ep.overview || null, ep.id])
       }
     } catch (err) {
-      console.error(`Ошибка сезона ${season.season_number} для ${tmdbId}:`, err.message)
+      console.error(`Season ${season.season_number} for ${tmdbId}:`, err.message)
     }
   }
 }
 
-/**
- * Получает эпизоды из БД (с проверкой актуальности).
- */
-async function getEpisodesFromDb(tmdbId) {
-  const movie = await pool.query('SELECT type, last_checked_at FROM movies WHERE tmdb_id = $1', [tmdbId])
-  if (movie.rows.length === 0) return []
+async function getEpisodesFromDb(tmdbId, type) {
+  if (type !== 'TV_SERIES') return []
 
-  const isTV = movie.rows[0].type === 'TV_SERIES' || movie.rows[0].type === 'MINI_SERIES'
-  if (!isTV) return []
+  const m = await pool.query(
+    'SELECT last_checked_at FROM movies WHERE tmdb_id = $1 AND type = $2',
+    [tmdbId, type]
+  )
+  if (m.rows.length === 0) return []
 
-  // Проверяем свежесть (7 дней)
-  const lastSync = movie.rows[0].last_checked_at
+  const lastSync = m.rows[0].last_checked_at
   const needsRefresh = !lastSync || (Date.now() - new Date(lastSync).getTime()) > 7 * 24 * 60 * 60 * 1000
 
   const existing = await pool.query(
-    'SELECT season_number, episode_number, name_ru, air_date as release_date FROM tmdb_episodes WHERE movie_id = $1 ORDER BY season_number, episode_number',
-    [tmdbId]
+    `SELECT season_number, episode_number, name_ru, air_date as release_date
+     FROM tmdb_episodes WHERE movie_id = $1 AND movie_type = $2
+     ORDER BY season_number, episode_number`,
+    [tmdbId, type]
   )
 
   if (existing.rows.length === 0 || needsRefresh) {
     try {
-      await upsertTmdbMovie(tmdbId)
+      await upsertTmdbMovie(tmdbId, type)
       const fresh = await pool.query(
-        'SELECT season_number, episode_number, name_ru, air_date as release_date FROM tmdb_episodes WHERE movie_id = $1 ORDER BY season_number, episode_number',
-        [tmdbId]
+        `SELECT season_number, episode_number, name_ru, air_date as release_date
+         FROM tmdb_episodes WHERE movie_id = $1 AND movie_type = $2
+         ORDER BY season_number, episode_number`,
+        [tmdbId, type]
       )
       return fresh.rows
     } catch (err) {
-      console.error(`Ошибка обновления ${tmdbId}:`, err.message)
+      console.error(`Refresh ${tmdbId}:`, err.message)
       return existing.rows
     }
   }
-
   return existing.rows
 }
+
+// ═════════════════════════ RELATIONS ═════════════════════════
+
+async function syncMovieRelations(tmdbId, type) {
+  const isTV = type === 'TV_SERIES'
+  const endpoint = isTV ? 'tv' : 'movie'
+  const relatedType = isTV ? 'TV_SERIES' : 'FILM'
+
+  try {
+    const recData = await tmdbFetch(
+      `${TMDB_BASE}/${endpoint}/${tmdbId}/recommendations?language=ru-RU&page=1`
+    )
+    const simData = await tmdbFetch(
+      `${TMDB_BASE}/${endpoint}/${tmdbId}/similar?language=ru-RU&page=1`
+    )
+
+    let collectionParts = []
+    if (!isTV) {
+      const details = await tmdbFetch(`${TMDB_BASE}/movie/${tmdbId}?language=ru-RU`)
+      if (details.belongs_to_collection) {
+        const cd = await tmdbFetch(
+          `${TMDB_BASE}/collection/${details.belongs_to_collection.id}?language=ru-RU`
+        )
+        collectionParts = cd.parts || []
+      }
+    }
+
+    const all = [
+      ...(recData.results || []).map(i => ({ ...i, relationType: 'RECOMMENDATION', rtype: relatedType })),
+      ...(simData.results || []).map(i => ({ ...i, relationType: 'SIMILAR', rtype: relatedType })),
+      ...collectionParts
+        .filter(p => p.id !== tmdbId)
+        .map(i => ({ ...i, relationType: 'SEQUEL', rtype: 'FILM' })),
+    ]
+
+    await pool.query(
+      'DELETE FROM movie_relations WHERE movie_id = $1 AND movie_type = $2',
+      [tmdbId, type]
+    )
+
+    for (const item of all) {
+      if (!item.id || item.id === tmdbId) continue
+      const nr = item.title || item.name || '—'
+      const no = item.original_title || item.original_name || '—'
+      const yr = parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0
+      const pu = item.poster_path ? `${IMAGE_BASE}w500${item.poster_path}` : null
+      const pp = item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null
+      await pool.query(`
+        INSERT INTO movie_relations
+          (movie_id, movie_type, related_movie_id, related_movie_type, relation_type,
+           name_ru, name_original, year, poster_url, poster_url_preview)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT DO NOTHING`,
+        [tmdbId, type, item.id, item.rtype, item.relationType, nr, no, yr, pu, pp])
+    }
+  } catch (err) {
+    console.error(`syncMovieRelations ${tmdbId}:`, err.message)
+  }
+}
+
+// ═════════════════════════ NOTIFICATIONS ═════════════════════════
 
 async function createNotification(userId, type, message, link = null) {
   try {
     await pool.query(
-      `INSERT INTO notifications (user_id, type, message, link) VALUES ($1, $2, $3, $4)`,
+      'INSERT INTO notifications (user_id, type, message, link) VALUES ($1, $2, $3, $4)',
       [userId, type, message, link]
     )
     emitNotification(userId, { type, message, link })
   } catch (err) {
-    console.error('Ошибка создания уведомления:', err.message)
+    console.error('createNotification:', err.message)
   }
 }
 
-// ───────────────────────── AUTH ─────────────────────────
+// ═════════════════════════ AUTH ═════════════════════════
 
 app.post('/api/register', async (req, res) => {
   const { name, email, password } = req.body
   try {
     const hash = await bcrypt.hash(password, 10)
-    const result = await pool.query(
+    const r = await pool.query(
       'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
       [name, email, hash]
     )
-    res.json(result.rows[0])
+    res.json(r.rows[0])
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: 'Email или ник уже заняты' })
     res.status(500).json({ error: 'Ошибка регистрации' })
@@ -402,55 +355,53 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email])
-    if (result.rows.length === 0) return res.status(400).json({ error: 'Пользователь не найден' })
-    const user = result.rows[0]
-    const match = await bcrypt.compare(password, user.password_hash)
-    if (!match) return res.status(400).json({ error: 'Неверный пароль' })
-
-    const token = jwt.sign({ id: user.id, name: user.name }, process.env.JWT_SECRET, { expiresIn: '30d' })
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email } })
-  } catch (err) {
+    const r = await pool.query('SELECT * FROM users WHERE email = $1', [email])
+    if (r.rows.length === 0) return res.status(400).json({ error: 'Пользователь не найден' })
+    const u = r.rows[0]
+    if (!(await bcrypt.compare(password, u.password_hash))) {
+      return res.status(400).json({ error: 'Неверный пароль' })
+    }
+    const token = jwt.sign(
+      { id: u.id, name: u.name }, process.env.JWT_SECRET, { expiresIn: '30d' }
+    )
+    res.json({ token, user: { id: u.id, name: u.name, email: u.email } })
+  } catch {
     res.status(500).json({ error: 'Ошибка входа' })
   }
 })
 
-// ───────────────────────── IMPORT ─────────────────────────
+// ═════════════════════════ IMPORT ═════════════════════════
 
 app.post('/api/import/upload', authMiddleware, upload.single('file'), async (req, res) => {
-  const userId = req.user.id
   const file = req.file
   const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN
   const CHAT_ID = process.env.TELEGRAM_CHAT_ID
-
   if (!file) return res.status(400).json({ error: 'Файл не загружен' })
   const ext = file.originalname.split('.').pop().toLowerCase()
-  if (ext !== 'xlsx') return res.status(400).json({ error: 'Поддерживается только .xlsx' })
-
-  const magicBytes = file.buffer.slice(0, 4).toString('hex').toUpperCase()
-  if (magicBytes !== '504B0304') return res.status(400).json({ error: 'Файл поврежден' })
-
+  if (ext !== 'xlsx') return res.status(400).json({ error: 'Только .xlsx' })
+  const magic = file.buffer.slice(0, 4).toString('hex').toUpperCase()
+  if (magic !== '504B0304') return res.status(400).json({ error: 'Файл поврежден' })
   if (!TELEGRAM_TOKEN || !CHAT_ID) return res.status(500).json({ error: 'Telegram не настроен' })
-
   try {
-    const formData = new FormData()
-    formData.append('chat_id', CHAT_ID)
-    formData.append('caption', `Новый импорт фильмов от пользователя #${userId}`)
-    const blob = new Blob([file.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    formData.append('document', blob, file.originalname)
-
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
-      method: 'POST', body: formData,
+    const fd = new FormData()
+    fd.append('chat_id', CHAT_ID)
+    fd.append('caption', `Новый импорт от #${req.user.id}`)
+    const blob = new Blob([file.buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
-    const data = await response.json()
-    if (!data.ok) throw new Error(data.description || 'Ошибка Telegram API')
-    res.json({ success: true, message: 'Файл отправлен' })
-  } catch (err) {
-    res.status(500).json({ error: 'Не удалось отправить файл.' })
+    fd.append('document', blob, file.originalname)
+    const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
+      method: 'POST', body: fd,
+    })
+    const data = await r.json()
+    if (!data.ok) throw new Error(data.description || 'Telegram error')
+    res.json({ success: true })
+  } catch {
+    res.status(500).json({ error: 'Не удалось отправить файл' })
   }
 })
 
-// ───────────────────────── MAIN / SEARCH (TMDB) ─────────────────────────
+// ═════════════════════════ MAIN / SEARCH ═════════════════════════
 
 app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
   const page = parseInt(req.query.page) || 1
@@ -459,31 +410,32 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
   const userId = req.user.id
 
   try {
-    // MARVEL — кастомная подборка из main_movies
     if (category === 'MARVEL') {
       const limit = parseInt(req.query.limit) || 20
       const offset = (page - 1) * limit
-      let countQuery = 'SELECT COUNT(*) FROM main_movies mm JOIN movies m ON m.id = mm.movie_id'
-      let dataQuery = `
-        SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.name_ru AS "nameRu", m.name_en AS "nameEn", m.name_original AS "nameOriginal",
-          m.year, m.type, m.poster_url AS "posterUrl", m.poster_url_preview AS "posterUrlPreview",
-          m.rating_imdb AS "ratingKinopoisk", m.rating_imdb AS "ratingImdb", m.description,
-          m.film_length AS "filmLength", m.slogan,
+      let countQ = 'SELECT COUNT(*) FROM main_movies mm JOIN movies m ON m.id = mm.movie_id'
+      let dataQ = `
+        SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+          m.name_ru AS "nameRu", m.name_original AS "nameOriginal",
+          m.year, m.poster_url AS "posterUrl", m.poster_url_preview AS "posterUrlPreview",
+          m.rating_imdb AS "ratingKinopoisk", m.rating_imdb AS "ratingImdb",
+          m.description, m.film_length AS "filmLength", m.slogan,
           COALESCE(um.status, 'not_watched') AS status
         FROM main_movies mm JOIN movies m ON m.id = mm.movie_id
-        LEFT JOIN user_movies um ON um.movie_id = m.tmdb_id AND um.user_id = $3`
+        LEFT JOIN user_movies um
+          ON um.movie_id = m.tmdb_id AND um.movie_type = m.type AND um.user_id = $3`
       const params = [limit, offset, userId]
-      let countParams = []
+      const countParams = []
       if (typeFilter !== 'ALL') {
-        dataQuery += ` WHERE m.type = $4`
-        countQuery += ` WHERE m.type = $1`
+        dataQ += ' WHERE m.type = $4'
+        countQ += ' WHERE m.type = $1'
         params.push(typeFilter)
         countParams.push(typeFilter)
       }
-      dataQuery += ` ORDER BY mm.position ASC LIMIT $1 OFFSET $2`
-      const countResult = await pool.query(countQuery, countParams)
-      const total = parseInt(countResult.rows[0].count)
-      const result = await pool.query(dataQuery, params)
+      dataQ += ' ORDER BY mm.position ASC LIMIT $1 OFFSET $2'
+      const cr = await pool.query(countQ, countParams)
+      const total = parseInt(cr.rows[0].count)
+      const result = await pool.query(dataQ, params)
       return res.json({
         items: result.rows, page, limit, total,
         totalPages: Math.ceil(total / limit),
@@ -491,7 +443,6 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       })
     }
 
-    // Остальные категории — TMDB
     let endpoint
     switch (category) {
       case 'TOP_POPULAR_ALL': endpoint = '/trending/all/week'; break
@@ -502,44 +453,47 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       default: endpoint = '/movie/popular'
     }
 
-    const data = await tmdbFetch(
-      `${TMDB_BASE}${endpoint}?page=${page}&language=ru-RU`
-    )
+    const data = await tmdbFetch(`${TMDB_BASE}${endpoint}?page=${page}&language=ru-RU`)
     let items = data.results || []
-
     if (typeFilter !== 'ALL') {
-      items = items.filter(item => {
-        const itemType = item.media_type === 'tv' ? 'TV_SERIES' : 'FILM'
-        return itemType === typeFilter || (typeFilter === 'MINI_SERIES' && itemType === 'TV_SERIES')
+      items = items.filter(i => {
+        const t = i.media_type === 'tv' ? 'TV_SERIES' : 'FILM'
+        return t === typeFilter
       })
     }
 
-    const tmdbIds = items.map(i => i.id).filter(Boolean)
-    const statuses = {}
-    if (tmdbIds.length > 0) {
-      const statusResult = await pool.query(
-        'SELECT movie_id, status FROM user_movies WHERE user_id = $1 AND movie_id = ANY($2)',
-        [userId, tmdbIds]
+    // Статусы — через composite (movie_id, movie_type)
+    const refs = items.map(i => ({
+      id: i.id,
+      type: i.media_type === 'tv' ? 'TV_SERIES' : 'FILM',
+    }))
+    const statusMap = {}
+    if (refs.length > 0) {
+      const ids = refs.map(r => r.id)
+      const sr = await pool.query(
+        `SELECT movie_id, movie_type, status FROM user_movies
+         WHERE user_id = $1 AND movie_id = ANY($2)`,
+        [userId, ids]
       )
-      statusResult.rows.forEach(row => { statuses[row.movie_id] = row.status })
+      sr.rows.forEach(r => { statusMap[`${r.movie_id}:${r.movie_type}`] = r.status })
     }
 
     const responseItems = items.map(item => {
-      const isTV = item.media_type === 'tv' || item.first_air_date
+      const isTV = item.media_type === 'tv' || !!item.first_air_date
+      const type = isTV ? 'TV_SERIES' : 'FILM'
       return {
         kinopoiskId: item.id,
         tmdbId: item.id,
         nameRu: item.title || item.name || '—',
-        nameEn: item.original_title || item.original_name || '—',
         nameOriginal: item.original_title || item.original_name || '—',
         year: parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0,
-        type: isTV ? 'TV_SERIES' : 'FILM',
+        type,
         posterUrl: item.poster_path ? `${IMAGE_BASE}w500${item.poster_path}` : null,
         posterUrlPreview: item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null,
         ratingKinopoisk: item.vote_average || 0,
         ratingImdb: item.vote_average || 0,
         description: item.overview || '—',
-        status: statuses[item.id] || 'not_watched',
+        status: statusMap[`${item.id}:${type}`] || 'not_watched',
       }
     })
 
@@ -558,28 +512,24 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
 app.get('/api/kinopoisk/search', authMiddleware, async (req, res) => {
   const { keyword } = req.query
   if (!keyword) return res.status(400).json({ error: 'Нет ключевого слова' })
-
   try {
     const data = await tmdbFetch(
       `${TMDB_BASE}/search/multi?query=${encodeURIComponent(keyword)}&language=ru-RU&include_adult=false`
     )
-
     const films = (data.results || [])
-      .filter(item => item.media_type === 'movie' || item.media_type === 'tv')
+      .filter(i => i.media_type === 'movie' || i.media_type === 'tv')
       .map(item => {
         const isTV = item.media_type === 'tv'
         return {
           kinopoiskId: item.id,
           tmdbId: item.id,
           nameRu: item.title || item.name || '—',
-          nameEn: item.original_title || item.original_name || '—',
           nameOriginal: item.original_title || item.original_name || '—',
           year: parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0,
           type: isTV ? 'TV_SERIES' : 'FILM',
           posterUrlPreview: item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null,
         }
       })
-
     res.json({ films })
   } catch (err) {
     console.error(err)
@@ -587,35 +537,42 @@ app.get('/api/kinopoisk/search', authMiddleware, async (req, res) => {
   }
 })
 
-// ───────────────────────── MOVIE DETAIL (TMDB) ─────────────────────────
+// ═════════════════════════ DETAIL (по типу) ═════════════════════════
 
-app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
+async function handleDetail(req, res, dbType) {
   const tmdbId = parseInt(req.params.id)
   if (!tmdbId) return res.status(400).json({ error: 'Неверный ID' })
 
   try {
-    // Всегда загружаем из TMDB (свежие данные) - фоновая проверка
     try {
-      await upsertTmdbMovie(tmdbId)
+      await upsertTmdbMovie(tmdbId, dbType)
     } catch (err) {
-      console.error(`Ошибка загрузки ${tmdbId} из TMDB:`, err.message)
+      console.error(`upsert ${dbType}/${tmdbId}:`, err.message)
     }
 
-    const movieRes = await pool.query('SELECT * FROM movies WHERE tmdb_id = $1', [tmdbId])
-    if (movieRes.rows.length === 0) return res.status(404).json({ error: 'Фильм не найден' })
+    const mr = await pool.query(
+      'SELECT * FROM movies WHERE tmdb_id = $1 AND type = $2',
+      [tmdbId, dbType]
+    )
+    if (mr.rows.length === 0) return res.status(404).json({ error: 'Не найдено' })
+    const movie = mr.rows[0]
 
-    const movie = movieRes.rows[0]
-    const genres = await pool.query('SELECT genre FROM movie_genres WHERE movie_id = $1', [tmdbId])
-    const countries = await pool.query('SELECT country FROM movie_countries WHERE movie_id = $1', [tmdbId])
+    const genres = await pool.query(
+      'SELECT genre FROM movie_genres WHERE movie_id = $1 AND movie_type = $2',
+      [tmdbId, dbType]
+    )
+    const countries = await pool.query(
+      'SELECT country FROM movie_countries WHERE movie_id = $1 AND movie_type = $2',
+      [tmdbId, dbType]
+    )
 
     res.json({
       kinopoiskId: movie.tmdb_id,
       tmdbId: movie.tmdb_id,
       nameRu: movie.name_ru,
-      nameEn: movie.name_en,
       nameOriginal: movie.name_original,
       year: movie.year,
-      type: movie.type, // Тут вернется FILM или TV_SERIES
+      type: movie.type,
       posterUrl: movie.poster_url,
       posterUrlPreview: movie.poster_url_preview,
       ratingKinopoisk: movie.rating_imdb,
@@ -628,108 +585,111 @@ app.get('/api/kinopoisk/:id', authMiddleware, async (req, res) => {
     })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: 'Ошибка загрузки фильма' })
+    res.status(500).json({ error: 'Ошибка загрузки' })
   }
-})
+}
 
-// ───────────────────────── FACTS / RELATIONS / SIMILARS ─────────────────────────
+app.get('/api/kinopoisk/movie/:id', authMiddleware, (req, res) => handleDetail(req, res, 'FILM'))
+app.get('/api/kinopoisk/tv/:id', authMiddleware, (req, res) => handleDetail(req, res, 'TV_SERIES'))
 
-app.get('/api/kinopoisk/:id/facts', authMiddleware, (req, res) => {
-  // У TMDB нет фактов — возвращаем пустой массив
-  res.json({ items: [] })
-})
+// ═════════════════════════ RELATIONS / SIMILARS ═════════════════════════
 
-app.get('/api/kinopoisk/:id/relations', authMiddleware, async (req, res) => {
+async function ensureRelationsSynced(tmdbId, dbType) {
+  const ex = await pool.query(
+    'SELECT 1 FROM movie_relations WHERE movie_id = $1 AND movie_type = $2 LIMIT 1',
+    [tmdbId, dbType]
+  )
+  if (ex.rows.length === 0) {
+    await syncMovieRelations(tmdbId, dbType)
+  }
+}
+
+async function handleRelations(req, res, dbType) {
   const tmdbId = parseInt(req.params.id)
   try {
-    // Проверяем, есть ли связи в БД
-    const existing = await pool.query(
-      'SELECT 1 FROM movie_relations WHERE movie_id = $1 LIMIT 1',
-      [tmdbId]
-    )
-    if (existing.rows.length === 0) {
-      // Если связей нет — синхронизируем
-      const movie = await pool.query('SELECT type FROM movies WHERE tmdb_id = $1', [tmdbId])
-      const isTV = movie.rows[0]?.type === 'TV_SERIES' || movie.rows[0]?.type === 'MINI_SERIES'
-      await syncMovieRelations(tmdbId, isTV)
-    }
-
-    const result = await pool.query(
-      `SELECT related_movie_id AS "kinopoiskId", relation_type AS "relationType",
-         name_ru AS "nameRu", name_en AS "nameEn", name_original AS "nameOriginal",
-         year, poster_url AS "posterUrl", poster_url_preview AS "posterUrlPreview"
-       FROM movie_relations WHERE movie_id = $1 AND relation_type IN ('SEQUEL', 'PREQUEL', 'REMAKE')`,
-      [tmdbId]
-    )
-    res.json({ items: result.rows })
+    await ensureRelationsSynced(tmdbId, dbType)
+    const r = await pool.query(`
+      SELECT related_movie_id AS "kinopoiskId",
+             related_movie_type AS "type",
+             relation_type AS "relationType",
+             name_ru AS "nameRu",
+             name_original AS "nameOriginal",
+             year, poster_url AS "posterUrl", poster_url_preview AS "posterUrlPreview"
+      FROM movie_relations
+      WHERE movie_id = $1 AND movie_type = $2
+        AND relation_type IN ('SEQUEL', 'PREQUEL', 'REMAKE')
+    `, [tmdbId, dbType])
+    res.json({ items: r.rows })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: 'Ошибка загрузки связанных фильмов' })
+    res.status(500).json({ error: 'Ошибка загрузки связанных' })
   }
-})
+}
 
-app.get('/api/kinopoisk/:id/similars', authMiddleware, async (req, res) => {
+async function handleSimilars(req, res, dbType) {
   const tmdbId = parseInt(req.params.id)
   try {
-    const existing = await pool.query(
-      'SELECT 1 FROM movie_relations WHERE movie_id = $1 LIMIT 1',
-      [tmdbId]
-    )
-    if (existing.rows.length === 0) {
-      const movie = await pool.query('SELECT type FROM movies WHERE tmdb_id = $1', [tmdbId])
-      const isTV = movie.rows[0]?.type === 'TV_SERIES' || movie.rows[0]?.type === 'MINI_SERIES'
-      await syncMovieRelations(tmdbId, isTV)
-    }
-
-    const result = await pool.query(
-      `SELECT related_movie_id AS "filmId", relation_type AS "relationType",
-         name_ru AS "nameRu", name_en AS "nameEn", name_original AS "nameOriginal",
-         year, poster_url AS "posterUrl", poster_url_preview AS "posterUrlPreview"
-       FROM movie_relations WHERE movie_id = $1 AND relation_type IN ('SIMILAR', 'RECOMMENDATION')`,
-      [tmdbId]
-    )
-    res.json({ items: result.rows })
+    await ensureRelationsSynced(tmdbId, dbType)
+    const r = await pool.query(`
+      SELECT related_movie_id AS "kinopoiskId",
+             related_movie_type AS "type",
+             relation_type AS "relationType",
+             name_ru AS "nameRu",
+             name_original AS "nameOriginal",
+             year, poster_url AS "posterUrl", poster_url_preview AS "posterUrlPreview"
+      FROM movie_relations
+      WHERE movie_id = $1 AND movie_type = $2
+        AND relation_type IN ('SIMILAR', 'RECOMMENDATION')
+    `, [tmdbId, dbType])
+    res.json({ items: r.rows })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: 'Ошибка загрузки похожих фильмов' })
+    res.status(500).json({ error: 'Ошибка загрузки похожих' })
   }
-})
+}
 
-// ───────────────────────── SEASONS (TMDB) ─────────────────────────
+app.get('/api/kinopoisk/movie/:id/relations', authMiddleware, (req, res) => handleRelations(req, res, 'FILM'))
+app.get('/api/kinopoisk/tv/:id/relations', authMiddleware, (req, res) => handleRelations(req, res, 'TV_SERIES'))
+app.get('/api/kinopoisk/movie/:id/similars', authMiddleware, (req, res) => handleSimilars(req, res, 'FILM'))
+app.get('/api/kinopoisk/tv/:id/similars', authMiddleware, (req, res) => handleSimilars(req, res, 'TV_SERIES'))
 
-app.get('/api/kinopoisk/:id/seasons', authMiddleware, async (req, res) => {
+// ═════════════════════════ SEASONS / WATCHED (только TV) ═════════════════════════
+
+app.get('/api/kinopoisk/tv/:id/seasons', authMiddleware, async (req, res) => {
   const tmdbId = parseInt(req.params.id)
   try {
-    const episodes = await getEpisodesFromDb(tmdbId)
+    const episodes = await getEpisodesFromDb(tmdbId, 'TV_SERIES')
     res.json({ episodes })
   } catch (err) {
-    console.error('Ошибка загрузки сезонов:', err)
+    console.error(err)
     res.status(500).json({ error: 'Ошибка загрузки сезонов' })
   }
 })
 
-app.get('/api/kinopoisk/:id/watched-episodes', authMiddleware, async (req, res) => {
+app.get('/api/kinopoisk/tv/:id/watched-episodes', authMiddleware, async (req, res) => {
   const tmdbId = parseInt(req.params.id)
   try {
-    const result = await pool.query(
-      'SELECT season_number, episode_number FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
+    const r = await pool.query(
+      `SELECT season_number, episode_number FROM user_episodes
+       WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
       [req.user.id, tmdbId]
     )
-    res.json({ episodes: result.rows })
-  } catch (err) {
+    res.json({ episodes: r.rows })
+  } catch {
     res.status(500).json({ error: 'Ошибка' })
   }
 })
 
-// ───────────────────────── EPISODES TOGGLE ─────────────────────────
+// ═════════════════════════ EPISODES ═════════════════════════
 
 async function recalcStatus(tmdbId, userId) {
-  const episodes = await getEpisodesFromDb(tmdbId)
+  const episodes = await getEpisodesFromDb(tmdbId, 'TV_SERIES')
   const aired = episodes.filter(e =>
     e.release_date ? new Date(e.release_date) <= new Date() : false
   )
   const watched = await pool.query(
-    'SELECT season_number, episode_number FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
+    `SELECT season_number, episode_number FROM user_episodes
+     WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
     [userId, tmdbId]
   )
 
@@ -737,35 +697,38 @@ async function recalcStatus(tmdbId, userId) {
   if (aired.length > 0 && watched.rows.length >= aired.length) {
     newStatus = 'watched'
   } else if (watched.rows.length === 0) {
-    await pool.query('DELETE FROM user_movies WHERE user_id = $1 AND movie_id = $2', [userId, tmdbId])
+    await pool.query(
+      `DELETE FROM user_movies WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
+      [userId, tmdbId]
+    )
     return 'not_watched'
   }
 
-  await pool.query(
-    `INSERT INTO user_movies (user_id, movie_id, status) VALUES ($1, $2, $3)
-     ON CONFLICT (user_id, movie_id) DO UPDATE SET status = EXCLUDED.status`,
-    [userId, tmdbId, newStatus]
-  )
+  await pool.query(`
+    INSERT INTO user_movies (user_id, movie_id, movie_type, status)
+    VALUES ($1, $2, 'TV_SERIES', $3)
+    ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET status = EXCLUDED.status
+  `, [userId, tmdbId, newStatus])
   return newStatus
 }
 
 app.post('/api/episodes/toggle', authMiddleware, async (req, res) => {
   const { movieId, seasonNumber, episodeNumber, watched } = req.body
   const userId = req.user.id
-
   try {
     if (watched) {
-      await pool.query(
-        `INSERT INTO user_episodes (user_id, movie_id, season_number, episode_number) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-        [userId, movieId, seasonNumber, episodeNumber]
-      )
+      await pool.query(`
+        INSERT INTO user_episodes (user_id, movie_id, movie_type, season_number, episode_number)
+        VALUES ($1, $2, 'TV_SERIES', $3, $4)
+        ON CONFLICT (user_id, movie_id, movie_type, season_number, episode_number) DO NOTHING
+      `, [userId, movieId, seasonNumber, episodeNumber])
     } else {
-      await pool.query(
-        `DELETE FROM user_episodes WHERE user_id = $1 AND movie_id = $2 AND season_number = $3 AND episode_number = $4`,
-        [userId, movieId, seasonNumber, episodeNumber]
-      )
+      await pool.query(`
+        DELETE FROM user_episodes
+        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+          AND season_number = $3 AND episode_number = $4
+      `, [userId, movieId, seasonNumber, episodeNumber])
     }
-
     const newStatus = await recalcStatus(movieId, userId)
     res.json({ success: true, newStatus })
   } catch (err) {
@@ -778,20 +741,21 @@ app.post('/api/episodes/bulk-toggle', authMiddleware, async (req, res) => {
   const { movieId, seasonNumber, episodes, watched } = req.body
   const userId = req.user.id
   const client = await pool.connect()
-
   try {
     await client.query('BEGIN')
     for (const ep of episodes) {
       if (watched) {
-        await client.query(
-          `INSERT INTO user_episodes (user_id, movie_id, season_number, episode_number) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-          [userId, movieId, seasonNumber, ep.episode_number]
-        )
+        await client.query(`
+          INSERT INTO user_episodes (user_id, movie_id, movie_type, season_number, episode_number)
+          VALUES ($1, $2, 'TV_SERIES', $3, $4)
+          ON CONFLICT (user_id, movie_id, movie_type, season_number, episode_number) DO NOTHING
+        `, [userId, movieId, seasonNumber, ep.episode_number])
       } else {
-        await client.query(
-          `DELETE FROM user_episodes WHERE user_id = $1 AND movie_id = $2 AND season_number = $3 AND episode_number = $4`,
-          [userId, movieId, seasonNumber, ep.episode_number]
-        )
+        await client.query(`
+          DELETE FROM user_episodes
+          WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+            AND season_number = $3 AND episode_number = $4
+        `, [userId, movieId, seasonNumber, ep.episode_number])
       }
     }
     await client.query('COMMIT')
@@ -805,54 +769,65 @@ app.post('/api/episodes/bulk-toggle', authMiddleware, async (req, res) => {
   }
 })
 
-// ───────────────────────── MOVIES STATUS ─────────────────────────
+// ═════════════════════════ STATUS ═════════════════════════
 
+// Bulk: body { refs: [{ tmdbId, type }] }
 app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
-  const { movieIds } = req.body
-  if (!movieIds || !movieIds.length) return res.json({ statuses: {} })
+  const { refs } = req.body
+  if (!Array.isArray(refs) || refs.length === 0) return res.json({ statuses: {} })
   try {
-    const result = await pool.query(
-      'SELECT movie_id, status FROM user_movies WHERE user_id = $1 AND movie_id = ANY($2)',
-      [req.user.id, movieIds]
+    const ids = refs.map(r => r.tmdbId)
+    const r = await pool.query(
+      `SELECT movie_id, movie_type, status FROM user_movies
+       WHERE user_id = $1 AND movie_id = ANY($2)`,
+      [req.user.id, ids]
     )
     const statuses = {}
-    result.rows.forEach(r => { statuses[r.movie_id] = r.status })
+    r.rows.forEach(row => {
+      statuses[`${row.movie_id}:${row.movie_type}`] = row.status
+    })
     res.json({ statuses })
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Ошибка' })
   }
 })
 
-app.get('/api/movies/:movieId', authMiddleware, async (req, res) => {
+// GET /api/movies/movie/:id | GET /api/movies/tv/:id
+async function getStatus(req, res, dbType) {
+  const tmdbId = parseInt(req.params.id)
   try {
-    const result = await pool.query(
-      'SELECT status FROM user_movies WHERE user_id = $1 AND movie_id = $2',
-      [req.user.id, parseInt(req.params.movieId)]
+    const r = await pool.query(
+      'SELECT status FROM user_movies WHERE user_id = $1 AND movie_id = $2 AND movie_type = $3',
+      [req.user.id, tmdbId, dbType]
     )
-    if (result.rows.length === 0) return res.json({ status: 'not_watched' })
-    res.json({ status: result.rows[0].status })
-  } catch (err) {
+    res.json({ status: r.rows[0]?.status || 'not_watched' })
+  } catch {
     res.status(500).json({ error: 'Ошибка' })
   }
-})
+}
 
-app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
-  const tmdbId = parseInt(req.params.movieId)
+// POST body { status }
+async function setStatus(req, res, dbType) {
+  const tmdbId = parseInt(req.params.id)
   const { status } = req.body
   const userId = req.user.id
 
   if (status === 'not_watched') {
     try {
-      const watchedResult = await pool.query(
-        'SELECT COUNT(*) FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
-        [userId, tmdbId]
+      const watched = await pool.query(
+        `SELECT COUNT(*) FROM user_episodes
+         WHERE user_id = $1 AND movie_id = $2 AND movie_type = $3`,
+        [userId, tmdbId, dbType]
       )
-      if (parseInt(watchedResult.rows[0].count) > 0) {
+      if (parseInt(watched.rows[0].count) > 0) {
         return res.status(400).json({ error: 'Нельзя сбросить, пока отмечены серии' })
       }
-      await pool.query('DELETE FROM user_movies WHERE user_id = $1 AND movie_id = $2', [userId, tmdbId])
+      await pool.query(
+        'DELETE FROM user_movies WHERE user_id = $1 AND movie_id = $2 AND movie_type = $3',
+        [userId, tmdbId, dbType]
+      )
       return res.json({ status: 'not_watched' })
-    } catch (err) {
+    } catch {
       return res.status(500).json({ error: 'Ошибка' })
     }
   }
@@ -860,183 +835,203 @@ app.post('/api/movies/:movieId', authMiddleware, async (req, res) => {
   const allowed = ['want_to_watch', 'watched', 'watching']
   if (!allowed.includes(status)) return res.status(400).json({ error: 'Неверный статус' })
 
-  if (status === 'watched') {
-    const movieType = await pool.query('SELECT type FROM movies WHERE tmdb_id = $1', [tmdbId])
-    if (movieType.rows[0]?.type === 'TV_SERIES' || movieType.rows[0]?.type === 'MINI_SERIES') {
-      return res.status(400).json({ error: 'Сериалы нельзя отметить напрямую' })
-    }
+  if (dbType === 'FILM' && status === 'watching') {
+    return res.status(400).json({ error: 'Фильмы не могут быть в статусе «Смотрю»' })
+  }
+  if (dbType === 'TV_SERIES' && status === 'watched') {
+    return res.status(400).json({ error: 'Сериалы нельзя отметить напрямую' })
   }
 
   try {
-    // Убедимся, что фильм есть в БД
-    const exists = await pool.query('SELECT 1 FROM movies WHERE tmdb_id = $1', [tmdbId])
-    if (exists.rows.length === 0) {
-      await upsertTmdbMovie(tmdbId)
-    }
-
-    const result = await pool.query(
-      `INSERT INTO user_movies (user_id, movie_id, status) VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, movie_id) DO UPDATE SET status = EXCLUDED.status RETURNING *`,
-      [userId, tmdbId, status]
+    const exists = await pool.query(
+      'SELECT 1 FROM movies WHERE tmdb_id = $1 AND type = $2',
+      [tmdbId, dbType]
     )
-    res.json(result.rows[0])
+    if (exists.rows.length === 0) {
+      await upsertTmdbMovie(tmdbId, dbType)
+    }
+    const r = await pool.query(`
+      INSERT INTO user_movies (user_id, movie_id, movie_type, status)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET status = EXCLUDED.status
+      RETURNING *
+    `, [userId, tmdbId, dbType, status])
+    res.json(r.rows[0])
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка сохранения' })
   }
-})
+}
 
-// ───────────────────────── FRIENDS ─────────────────────────
+app.get('/api/movies/movie/:id', authMiddleware, (req, res) => getStatus(req, res, 'FILM'))
+app.get('/api/movies/tv/:id', authMiddleware, (req, res) => getStatus(req, res, 'TV_SERIES'))
+app.post('/api/movies/movie/:id', authMiddleware, (req, res) => setStatus(req, res, 'FILM'))
+app.post('/api/movies/tv/:id', authMiddleware, (req, res) => setStatus(req, res, 'TV_SERIES'))
+
+// ═════════════════════════ FRIENDS (без изменений) ═════════════════════════
 
 app.get('/api/users/search', authMiddleware, async (req, res) => {
   const { name } = req.query
   if (!name) return res.status(400).json({ error: 'Введите ник' })
   try {
-    const result = await pool.query(
+    const r = await pool.query(
       'SELECT id, name FROM users WHERE name = $1 AND id != $2',
       [name, req.user.id]
     )
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Не найден' })
-    res.json(result.rows[0])
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Не найден' })
+    res.json(r.rows[0])
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/friends', authMiddleware, async (req, res) => {
   const userId = req.user.id
   try {
-    const friendsResult = await pool.query(
-      `SELECT u.id, u.name, f.id AS friendship_id, f.status
-       FROM friendships f JOIN users u ON u.id = CASE WHEN f.user_id_1 = $1 THEN f.user_id_2 ELSE f.user_id_1 END
-       WHERE (f.user_id_1 = $1 OR f.user_id_2 = $1) AND f.status = 'accepted'`, [userId]
-    )
-    const requestsResult = await pool.query(
-      `SELECT u.id, u.name, f.id AS friendship_id, f.status
-       FROM friendships f JOIN users u ON u.id = f.user_id_1
-       WHERE f.user_id_2 = $1 AND f.status = 'pending'`, [userId]
-    )
-    res.json({ friends: friendsResult.rows, requests: requestsResult.rows })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    const friends = await pool.query(`
+      SELECT u.id, u.name, f.id AS friendship_id, f.status
+      FROM friendships f JOIN users u
+        ON u.id = CASE WHEN f.user_id_1 = $1 THEN f.user_id_2 ELSE f.user_id_1 END
+      WHERE (f.user_id_1 = $1 OR f.user_id_2 = $1) AND f.status = 'accepted'
+    `, [userId])
+    const requests = await pool.query(`
+      SELECT u.id, u.name, f.id AS friendship_id, f.status
+      FROM friendships f JOIN users u ON u.id = f.user_id_1
+      WHERE f.user_id_2 = $1 AND f.status = 'pending'
+    `, [userId])
+    res.json({ friends: friends.rows, requests: requests.rows })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.post('/api/friends', authMiddleware, async (req, res) => {
   const { friendId } = req.body
   const userId = req.user.id
   if (userId === friendId) return res.status(400).json({ error: 'Нельзя себя' })
-
   try {
-    const existing = await pool.query(
-      `SELECT * FROM friendships WHERE (user_id_1 = $1 AND user_id_2 = $2) OR (user_id_1 = $2 AND user_id_2 = $1)`,
-      [userId, friendId]
-    )
-    if (existing.rows.length > 0) return res.status(400).json({ error: 'Уже существует' })
-
-    const result = await pool.query(
+    const ex = await pool.query(`
+      SELECT * FROM friendships
+      WHERE (user_id_1 = $1 AND user_id_2 = $2) OR (user_id_1 = $2 AND user_id_2 = $1)
+    `, [userId, friendId])
+    if (ex.rows.length > 0) return res.status(400).json({ error: 'Уже существует' })
+    const r = await pool.query(
       `INSERT INTO friendships (user_id_1, user_id_2, status) VALUES ($1, $2, 'pending') RETURNING *`,
       [userId, friendId]
     )
     const sender = await pool.query('SELECT name FROM users WHERE id = $1', [userId])
-    await createNotification(friendId, 'friend_request', `@${sender.rows[0]?.name} отправил заявку`, '/friends')
+    await createNotification(friendId, 'friend_request',
+      `@${sender.rows[0]?.name} отправил заявку`, '/friends')
     io.emit('friends:updated', { userIds: [userId, friendId] })
-    res.json(result.rows[0])
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    res.json(r.rows[0])
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.patch('/api/friends/:id', authMiddleware, async (req, res) => {
   const { id } = req.params
   const userId = req.user.id
   try {
-    const result = await pool.query(
-      `UPDATE friendships SET status = 'accepted' WHERE id = $1 AND user_id_2 = $2 RETURNING *`, [id, userId]
+    const r = await pool.query(
+      `UPDATE friendships SET status = 'accepted' WHERE id = $1 AND user_id_2 = $2 RETURNING *`,
+      [id, userId]
     )
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
-    const f = result.rows[0]
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
+    const f = r.rows[0]
     const accepter = await pool.query('SELECT name FROM users WHERE id = $1', [userId])
-    await createNotification(f.user_id_1, 'friend_accepted', `@${accepter.rows[0]?.name} принял заявку`, '/friends')
+    await createNotification(f.user_id_1, 'friend_accepted',
+      `@${accepter.rows[0]?.name} принял заявку`, '/friends')
     io.emit('friends:updated', { userIds: [f.user_id_1, f.user_id_2] })
     res.json(f)
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.delete('/api/friends/:id', authMiddleware, async (req, res) => {
   const { id } = req.params
   const userId = req.user.id
   try {
-    const result = await pool.query(
-      `DELETE FROM friendships WHERE id = $1 AND (user_id_1 = $2 OR user_id_2 = $2) RETURNING *`, [id, userId]
+    const r = await pool.query(
+      `DELETE FROM friendships WHERE id = $1 AND (user_id_1 = $2 OR user_id_2 = $2) RETURNING *`,
+      [id, userId]
     )
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Нет' })
-    const f = result.rows[0]
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Нет' })
+    const f = r.rows[0]
     io.emit('friends:updated', { userIds: [f.user_id_1, f.user_id_2] })
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
-// ───────────────────────── NOTIFICATIONS ─────────────────────────
+// ═════════════════════════ NOTIFICATIONS ═════════════════════════
 
 app.get('/api/notifications', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, type, message, link, read, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    const r = await pool.query(`
+      SELECT id, type, message, link, read, created_at FROM notifications
+      WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50
+    `, [req.user.id])
+    const u = await pool.query(
+      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE',
       [req.user.id]
     )
-    const unreadCount = await pool.query(
-      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE', [req.user.id]
-    )
-    res.json({ notifications: result.rows, unreadCount: parseInt(unreadCount.rows[0].count) })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    res.json({ notifications: r.rows, unreadCount: parseInt(u.rows[0].count) })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.patch('/api/notifications/:id/read', authMiddleware, async (req, res) => {
   try {
-    await pool.query('UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id])
+    await pool.query(
+      'UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    )
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.patch('/api/notifications/read-all', authMiddleware, async (req, res) => {
   try {
-    await pool.query('UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE', [req.user.id])
+    await pool.query(
+      'UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE',
+      [req.user.id]
+    )
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
-// ───────────────────────── MY SERIES ─────────────────────────
+// ═════════════════════════ MY SERIES / WATCHLIST ═════════════════════════
 
 app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
   const userId = req.user.id
   try {
-    const moviesResult = await pool.query(
-      `SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.name_ru AS "nameRu",
-        m.name_en AS "nameEn", m.poster_url_preview AS "posterUrlPreview", m.year
-       FROM user_movies um JOIN movies m ON m.tmdb_id = um.movie_id
-       WHERE um.user_id = $1 AND um.status = 'watching' ORDER BY um.id DESC`, [userId]
-    )
+    const movies = await pool.query(`
+      SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+        m.name_ru AS "nameRu", m.name_original AS "nameOriginal",
+        m.poster_url_preview AS "posterUrlPreview", m.year
+      FROM user_movies um
+      JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+      WHERE um.user_id = $1 AND um.status = 'watching'
+      ORDER BY um.id DESC
+    `, [userId])
 
     const series = []
-    for (const movie of moviesResult.rows) {
-      const episodes = await getEpisodesFromDb(movie.tmdbId)
-      const aired = episodes.filter(e => e.release_date ? new Date(e.release_date) <= new Date() : false)
-
-      const watchedEpisodes = await pool.query(
-        `SELECT season_number, episode_number FROM user_episodes WHERE user_id = $1 AND movie_id = $2`,
-        [userId, movie.tmdbId]
+    for (const movie of movies.rows) {
+      const episodes = await getEpisodesFromDb(movie.tmdbId, 'TV_SERIES')
+      const aired = episodes.filter(e =>
+        e.release_date ? new Date(e.release_date) <= new Date() : false
       )
-      const watchedSet = new Set(watchedEpisodes.rows.map(e => `${e.season_number}-${e.episode_number}`))
-
-      let nextEpisode = null
+      const watched = await pool.query(`
+        SELECT season_number, episode_number FROM user_episodes
+        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+      `, [userId, movie.tmdbId])
+      const watchedSet = new Set(watched.rows.map(e =>
+        `${e.season_number}-${e.episode_number}`
+      ))
+      let next = null
       for (const ep of aired) {
         if (!watchedSet.has(`${ep.season_number}-${ep.episode_number}`)) {
-          nextEpisode = ep
-          break
+          next = ep; break
         }
       }
-
       series.push({
         ...movie,
-        nextSeason: nextEpisode ? nextEpisode.season_number : null,
-        nextEpisode: nextEpisode ? nextEpisode.episode_number : null,
-        nextEpisodeName: nextEpisode ? nextEpisode.name_ru : null,
-        nextEpisodeDate: nextEpisode ? nextEpisode.release_date : null,
+        nextSeason: next?.season_number ?? null,
+        nextEpisode: next?.episode_number ?? null,
+        nextEpisodeName: next?.name_ru ?? null,
+        nextEpisodeDate: next?.release_date ?? null,
         remaining: aired.length - watchedSet.size,
         totalAired: aired.length,
         watchedCount: watchedSet.size,
@@ -1052,152 +1047,167 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
 app.get('/api/users/me/watchlist-series', authMiddleware, async (req, res) => {
   const userId = req.user.id
   try {
-    const result = await pool.query(
-      `SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.name_ru AS "nameRu",
-        m.name_en AS "nameEn", m.name_original AS "nameOriginal", m.year, m.type,
-        m.poster_url_preview AS "posterUrlPreview", m.rating_imdb AS "ratingKinopoisk",
-        m.rating_imdb AS "ratingImdb", m.film_length AS "filmLength"
-       FROM user_movies um JOIN movies m ON m.tmdb_id = um.movie_id
-       WHERE um.user_id = $1 AND um.status = 'want_to_watch'
-         AND m.type IN ('TV_SERIES', 'MINI_SERIES', 'TV_SHOW')
-       ORDER BY um.id DESC`, [userId]
-    )
+    const r = await pool.query(`
+      SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+        m.name_ru AS "nameRu", m.name_original AS "nameOriginal", m.year,
+        m.poster_url_preview AS "posterUrlPreview",
+        m.rating_imdb AS "ratingKinopoisk", m.rating_imdb AS "ratingImdb",
+        m.film_length AS "filmLength"
+      FROM user_movies um
+      JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+      WHERE um.user_id = $1 AND um.status = 'want_to_watch' AND m.type = 'TV_SERIES'
+      ORDER BY um.id DESC
+    `, [userId])
 
     const series = []
-    for (const row of result.rows) {
-      const episodes = await getEpisodesFromDb(row.tmdbId)
-      const aired = episodes.filter(e => e.release_date ? new Date(e.release_date) <= new Date() : false)
-
-      const watchedResult = await pool.query(
-        'SELECT COUNT(*) FROM user_episodes WHERE user_id = $1 AND movie_id = $2',
-        [userId, row.tmdbId]
+    for (const row of r.rows) {
+      const episodes = await getEpisodesFromDb(row.tmdbId, 'TV_SERIES')
+      const aired = episodes.filter(e =>
+        e.release_date ? new Date(e.release_date) <= new Date() : false
       )
-      const watchedCount = parseInt(watchedResult.rows[0].count)
+      const wc = await pool.query(`
+        SELECT COUNT(*) FROM user_episodes
+        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+      `, [userId, row.tmdbId])
+      const watchedCount = parseInt(wc.rows[0].count)
       const remaining = watchedCount > 0 ? Math.max(0, aired.length - watchedCount) : aired.length
-
       series.push({ ...row, episodesCount: aired.length, watchedCount, remaining })
     }
     res.json({ series })
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Ошибка' })
   }
 })
 
 app.get('/api/users/me/watchlist', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.name_ru AS "nameRu",
-        m.name_en AS "nameEn", m.name_original AS "nameOriginal", m.year, m.type,
-        m.poster_url_preview AS "posterUrlPreview", m.rating_imdb AS "ratingKinopoisk",
-        m.rating_imdb AS "ratingImdb", m.film_length AS "filmLength", m.description
-       FROM user_movies um JOIN movies m ON m.tmdb_id = um.movie_id
-       WHERE um.user_id = $1 AND um.status = 'want_to_watch' AND m.type IN ('FILM', 'VIDEO')
-       ORDER BY um.id DESC`, [req.user.id]
-    )
-    res.json({ movies: result.rows })
-  } catch (err) {
+    const r = await pool.query(`
+      SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+        m.name_ru AS "nameRu", m.name_original AS "nameOriginal", m.year,
+        m.poster_url_preview AS "posterUrlPreview",
+        m.rating_imdb AS "ratingKinopoisk", m.rating_imdb AS "ratingImdb",
+        m.film_length AS "filmLength", m.description
+      FROM user_movies um
+      JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+      WHERE um.user_id = $1 AND um.status = 'want_to_watch' AND m.type = 'FILM'
+      ORDER BY um.id DESC
+    `, [req.user.id])
+    res.json({ movies: r.rows })
+  } catch {
     res.status(500).json({ error: 'Ошибка' })
   }
 })
 
-// ───────────────────────── PROFILE ─────────────────────────
+// ═════════════════════════ PROFILE ═════════════════════════
 
 app.get('/api/users/:id', authMiddleware, async (req, res) => {
   const { id } = req.params
-  const currentUserId = req.user.id
+  const current = req.user.id
   try {
-    const userResult = await pool.query('SELECT id, name, email, created_at FROM users WHERE id = $1', [id])
-    if (userResult.rows.length === 0) return res.status(404).json({ error: 'Не найден' })
-    const user = userResult.rows[0]
-
-    const countsResult = await pool.query(
-      `SELECT COUNT(*) FILTER (WHERE status = 'watched') AS watched, COUNT(*) FILTER (WHERE status = 'want_to_watch') AS want_to_watch
-       FROM user_movies WHERE user_id = $1`, [id]
+    const u = await pool.query(
+      'SELECT id, name, email, created_at FROM users WHERE id = $1', [id]
     )
-    const friendsCountResult = await pool.query(
-      `SELECT COUNT(*) FROM friendships WHERE (user_id_1 = $1 OR user_id_2 = $1) AND status = 'accepted'`, [id]
+    if (u.rows.length === 0) return res.status(404).json({ error: 'Не найден' })
+    const user = u.rows[0]
+
+    const cnt = await pool.query(`
+      SELECT COUNT(*) FILTER (WHERE status = 'watched') AS watched,
+             COUNT(*) FILTER (WHERE status = 'want_to_watch') AS want_to_watch
+      FROM user_movies WHERE user_id = $1
+    `, [id])
+    const fr = await pool.query(
+      `SELECT COUNT(*) FROM friendships
+       WHERE (user_id_1 = $1 OR user_id_2 = $1) AND status = 'accepted'`, [id]
     )
 
     let friendshipStatus = 'none', friendshipId = null, isFriend = false
-    if (currentUserId !== parseInt(id)) {
-      const friendshipResult = await pool.query(
-        `SELECT id, user_id_1, user_id_2, status FROM friendships
-         WHERE (user_id_1 = $1 AND user_id_2 = $2) OR (user_id_1 = $2 AND user_id_2 = $1) LIMIT 1`,
-        [currentUserId, id]
-      )
-      if (friendshipResult.rows.length > 0) {
-        const f = friendshipResult.rows[0]
-        friendshipId = f.id
-        if (f.status === 'accepted') { friendshipStatus = 'accepted'; isFriend = true }
-        else if (f.status === 'pending') friendshipStatus = f.user_id_1 === currentUserId ? 'pending_outgoing' : 'pending_incoming'
+    if (current !== parseInt(id)) {
+      const f = await pool.query(`
+        SELECT id, user_id_1, user_id_2, status FROM friendships
+        WHERE (user_id_1 = $1 AND user_id_2 = $2) OR (user_id_1 = $2 AND user_id_2 = $1)
+        LIMIT 1
+      `, [current, id])
+      if (f.rows.length > 0) {
+        const fr2 = f.rows[0]
+        friendshipId = fr2.id
+        if (fr2.status === 'accepted') { friendshipStatus = 'accepted'; isFriend = true }
+        else if (fr2.status === 'pending') {
+          friendshipStatus = fr2.user_id_1 === current ? 'pending_outgoing' : 'pending_incoming'
+        }
       }
     }
 
     res.json({
-      user: { id: user.id, name: user.name, email: currentUserId === parseInt(id) ? user.email : undefined, created_at: user.created_at },
-      stats: {
-        watched: parseInt(countsResult.rows[0].watched),
-        want_to_watch: parseInt(countsResult.rows[0].want_to_watch),
-        not_watched: 0,
-        friends: parseInt(friendsCountResult.rows[0].count),
+      user: {
+        id: user.id, name: user.name,
+        email: current === parseInt(id) ? user.email : undefined,
+        created_at: user.created_at,
       },
-      isFriend, friendshipStatus, friendshipId, isOwn: currentUserId === parseInt(id),
+      stats: {
+        watched: parseInt(cnt.rows[0].watched),
+        want_to_watch: parseInt(cnt.rows[0].want_to_watch),
+        not_watched: 0,
+        friends: parseInt(fr.rows[0].count),
+      },
+      isFriend, friendshipStatus, friendshipId, isOwn: current === parseInt(id),
     })
-  } catch (err) {
-    res.status(500).json({ error: 'Ошибка' })
-  }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/users/:id/movies', authMiddleware, async (req, res) => {
   const { id } = req.params
-  const currentUserId = req.user.id
+  const current = req.user.id
   const { status } = req.query
   try {
-    let query = `
-      SELECT mv.tmdb_id AS "kinopoiskId", mv.tmdb_id AS "tmdbId", mv.name_ru AS "nameRu",
-        mv.name_en AS "nameEn", mv.name_original AS "nameOriginal", mv.year,
+    let q = `
+      SELECT mv.tmdb_id AS "kinopoiskId", mv.tmdb_id AS "tmdbId", mv.type,
+        mv.name_ru AS "nameRu", mv.name_original AS "nameOriginal", mv.year,
         mv.poster_url_preview AS "posterUrlPreview",
         um_owner.status AS status, um_me.status AS my_status
       FROM user_movies um_owner
-      LEFT JOIN movies mv ON mv.tmdb_id = um_owner.movie_id
-      LEFT JOIN user_movies um_me ON um_me.movie_id = um_owner.movie_id AND um_me.user_id = $2
-      WHERE um_owner.user_id = $1`
-    const params = [id, currentUserId]
+      LEFT JOIN movies mv
+        ON mv.tmdb_id = um_owner.movie_id AND mv.type = um_owner.movie_type
+      LEFT JOIN user_movies um_me
+        ON um_me.movie_id = um_owner.movie_id
+        AND um_me.movie_type = um_owner.movie_type
+        AND um_me.user_id = $2
+      WHERE um_owner.user_id = $1
+    `
+    const params = [id, current]
     if (status && status !== 'all') {
-      query += ' AND um_owner.status = $3'
+      q += ' AND um_owner.status = $3'
       params.push(status)
     }
-    query += ' ORDER BY um_owner.id DESC'
-    const result = await pool.query(query, params)
-    res.json({ movies: result.rows })
-  } catch (err) {
-    res.status(500).json({ error: 'Ошибка' })
-  }
+    q += ' ORDER BY um_owner.id DESC'
+    const r = await pool.query(q, params)
+    res.json({ movies: r.rows })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/users/:id/common', authMiddleware, async (req, res) => {
   const { id } = req.params
   if (req.user.id === parseInt(id)) return res.status(400).json({ error: 'Себя нельзя' })
   try {
-    const result = await pool.query(
-      `SELECT mv.tmdb_id AS "kinopoiskId", mv.tmdb_id AS "tmdbId", mv.name_ru AS "nameRu",
-         mv.name_en AS "nameEn", mv.name_original AS "nameOriginal", mv.year,
-         mv.poster_url_preview AS "posterUrlPreview",
-         u1.status AS my_status, u2.status AS their_status
-       FROM user_movies u1
-       JOIN user_movies u2 ON u2.movie_id = u1.movie_id AND u2.user_id = $2
-       LEFT JOIN movies mv ON mv.tmdb_id = u1.movie_id
-       WHERE u1.user_id = $1 AND u1.status = 'want_to_watch' AND u2.status = 'want_to_watch'
-       ORDER BY mv.year DESC`,
-      [req.user.id, id]
-    )
-    res.json({ movies: result.rows })
-  } catch (err) {
-    res.status(500).json({ error: 'Ошибка' })
-  }
+    const r = await pool.query(`
+      SELECT mv.tmdb_id AS "kinopoiskId", mv.tmdb_id AS "tmdbId", mv.type,
+        mv.name_ru AS "nameRu", mv.name_original AS "nameOriginal", mv.year,
+        mv.poster_url_preview AS "posterUrlPreview",
+        u1.status AS my_status, u2.status AS their_status
+      FROM user_movies u1
+      JOIN user_movies u2
+        ON u2.movie_id = u1.movie_id
+        AND u2.movie_type = u1.movie_type
+        AND u2.user_id = $2
+      LEFT JOIN movies mv
+        ON mv.tmdb_id = u1.movie_id AND mv.type = u1.movie_type
+      WHERE u1.user_id = $1 AND u1.status = 'want_to_watch' AND u2.status = 'want_to_watch'
+      ORDER BY mv.year DESC
+    `, [req.user.id, id])
+    res.json({ movies: r.rows })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
-// ───────────────────────── MATCH ─────────────────────────
+// ═════════════════════════ MATCH ═════════════════════════
 
 app.post('/api/match/rooms', authMiddleware, async (req, res) => {
   const { friendIds, criterion } = req.body
@@ -1205,31 +1215,32 @@ app.post('/api/match/rooms', authMiddleware, async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const roomResult = await client.query(
-      `INSERT INTO match_rooms (organizer_id, criterion, status, current_round) VALUES ($1, $2, 'waiting', 1) RETURNING *`,
-      [req.user.id, criterion]
-    )
-    const room = roomResult.rows[0]
-    await client.query(
-      `INSERT INTO match_participants (room_id, user_id, joined, responded) VALUES ($1, $2, TRUE, TRUE)`,
-      [room.id, req.user.id]
-    )
-    for (const friendId of friendIds) {
-      await client.query(
-        `INSERT INTO match_participants (room_id, user_id, joined, responded) VALUES ($1, $2, FALSE, FALSE)`,
-        [room.id, friendId]
-      )
+    const rr = await client.query(`
+      INSERT INTO match_rooms (organizer_id, criterion, status, current_round)
+      VALUES ($1, $2, 'waiting', 1) RETURNING *
+    `, [req.user.id, criterion])
+    const room = rr.rows[0]
+    await client.query(`
+      INSERT INTO match_participants (room_id, user_id, joined, responded)
+      VALUES ($1, $2, TRUE, TRUE)
+    `, [room.id, req.user.id])
+    for (const fid of friendIds) {
+      await client.query(`
+        INSERT INTO match_participants (room_id, user_id, joined, responded)
+        VALUES ($1, $2, FALSE, FALSE)
+      `, [room.id, fid])
     }
     await client.query('COMMIT')
 
-    const organizer = await pool.query('SELECT name FROM users WHERE id = $1', [req.user.id])
-    for (const friendId of friendIds) {
-      await createNotification(friendId, 'match_invite', `@${organizer.rows[0]?.name} приглашает подобрать фильм`, '/match')
-      const friendSocket = onlineUsers.get(friendId)
-      if (friendSocket) io.to(friendSocket).emit('match:invite', { roomId: room.id, organizerName: organizer.rows[0]?.name })
+    const org = await pool.query('SELECT name FROM users WHERE id = $1', [req.user.id])
+    for (const fid of friendIds) {
+      await createNotification(fid, 'match_invite',
+        `@${org.rows[0]?.name} приглашает подобрать фильм`, '/match')
+      const fs = onlineUsers.get(fid)
+      if (fs) io.to(fs).emit('match:invite', { roomId: room.id, organizerName: org.rows[0]?.name })
     }
     res.json(room)
-  } catch (err) {
+  } catch {
     await client.query('ROLLBACK')
     res.status(500).json({ error: 'Ошибка' })
   } finally { client.release() }
@@ -1237,48 +1248,56 @@ app.post('/api/match/rooms', authMiddleware, async (req, res) => {
 
 app.get('/api/match/rooms', authMiddleware, async (req, res) => {
   try {
-    const inv = await pool.query(
-      `SELECT r.id AS room_id, r.criterion, r.status, r.created_at,
-         u.name AS organizer_name, u.id AS organizer_id
-       FROM match_rooms r JOIN match_participants p ON p.room_id = r.id JOIN users u ON u.id = r.organizer_id
-       WHERE p.user_id = $1 AND p.responded = FALSE AND r.status = 'waiting'
-       ORDER BY r.created_at DESC`, [req.user.id]
-    )
-    res.json({ invitations: inv.rows })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    const r = await pool.query(`
+      SELECT r.id AS room_id, r.criterion, r.status, r.created_at,
+        u.name AS organizer_name, u.id AS organizer_id
+      FROM match_rooms r
+      JOIN match_participants p ON p.room_id = r.id
+      JOIN users u ON u.id = r.organizer_id
+      WHERE p.user_id = $1 AND p.responded = FALSE AND r.status = 'waiting'
+      ORDER BY r.created_at DESC
+    `, [req.user.id])
+    res.json({ invitations: r.rows })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/match/rooms/:id/movies', authMiddleware, async (req, res) => {
   try {
-    const roomResult = await pool.query('SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id])
-    if (roomResult.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
-    const round = roomResult.rows[0].current_round
-    const result = await pool.query(
-      `SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId",
-         mv.name_ru AS "nameRu", mv.name_en AS "nameEn", mv.name_original AS "nameOriginal",
-         mv.year, mv.poster_url_preview AS "posterUrlPreview"
-       FROM match_movies m LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id
-       WHERE m.room_id = $1 AND m.round = $2`, [req.params.id, round]
-    )
-    res.json({ movies: result.rows, round })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    const rr = await pool.query('SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id])
+    if (rr.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
+    const round = rr.rows[0].current_round
+    const r = await pool.query(`
+      SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId", m.movie_type AS "type",
+        mv.name_ru AS "nameRu", mv.name_original AS "nameOriginal",
+        mv.year, mv.poster_url_preview AS "posterUrlPreview"
+      FROM match_movies m
+      LEFT JOIN movies mv
+        ON mv.tmdb_id = m.movie_id AND mv.type = m.movie_type
+      WHERE m.room_id = $1 AND m.round = $2
+    `, [req.params.id, round])
+    res.json({ movies: r.rows, round })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/match/rooms/:id', authMiddleware, async (req, res) => {
   try {
-    const roomResult = await pool.query(
-      `SELECT r.*, u.name AS organizer_name FROM match_rooms r JOIN users u ON u.id = r.organizer_id WHERE r.id = $1`,
-      [req.params.id]
-    )
-    if (roomResult.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
-    const part = await pool.query(
-      `SELECT p.user_id AS id, u.name, p.joined, p.responded, p.declined,
-         (p.user_id = r.organizer_id) AS is_organizer
-       FROM match_participants p JOIN users u ON u.id = p.user_id JOIN match_rooms r ON r.id = p.room_id
-       WHERE p.room_id = $1 ORDER BY is_organizer DESC`, [req.params.id]
-    )
-    res.json({ room: roomResult.rows[0], participants: part.rows })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    const rr = await pool.query(`
+      SELECT r.*, u.name AS organizer_name
+      FROM match_rooms r JOIN users u ON u.id = r.organizer_id
+      WHERE r.id = $1
+    `, [req.params.id])
+    if (rr.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
+    const part = await pool.query(`
+      SELECT p.user_id AS id, u.name, p.joined, p.responded, p.declined,
+        (p.user_id = r.organizer_id) AS is_organizer
+      FROM match_participants p
+      JOIN users u ON u.id = p.user_id
+      JOIN match_rooms r ON r.id = p.room_id
+      WHERE p.room_id = $1
+      ORDER BY is_organizer DESC
+    `, [req.params.id])
+    res.json({ room: rr.rows[0], participants: part.rows })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.patch('/api/match/rooms/:id/respond', authMiddleware, async (req, res) => {
@@ -1286,23 +1305,28 @@ app.patch('/api/match/rooms/:id/respond', authMiddleware, async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const upd = await client.query(
-      `UPDATE match_participants SET responded = TRUE, declined = $1, joined = $2 WHERE room_id = $3 AND user_id = $4 RETURNING *`,
-      [!accept, accept, req.params.id, req.user.id]
-    )
+    const upd = await client.query(`
+      UPDATE match_participants
+      SET responded = TRUE, declined = $1, joined = $2
+      WHERE room_id = $3 AND user_id = $4 RETURNING *
+    `, [!accept, accept, req.params.id, req.user.id])
     if (upd.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Нет' }) }
     if (!accept) {
-      await client.query(`UPDATE match_rooms SET status = 'cancelled', cancelled_by = $1, cancelled_at = NOW() WHERE id = $2`, [req.user.id, req.params.id])
+      await client.query(`
+        UPDATE match_rooms SET status = 'cancelled', cancelled_by = $1, cancelled_at = NOW()
+        WHERE id = $2
+      `, [req.user.id, req.params.id])
       const decliner = await client.query('SELECT name FROM users WHERE id = $1', [req.user.id])
       const room = await client.query('SELECT organizer_id FROM match_rooms WHERE id = $1', [req.params.id])
       if (room.rows[0]?.organizer_id !== req.user.id) {
-        await createNotification(room.rows[0].organizer_id, 'match_cancelled', `@${decliner.rows[0]?.name} отклонил`, '/match')
+        await createNotification(room.rows[0].organizer_id, 'match_cancelled',
+          `@${decliner.rows[0]?.name} отклонил`, '/match')
       }
     }
     await client.query('COMMIT')
     io.to(`match_room_${req.params.id}`).emit('match:updated', { roomId: req.params.id })
     res.json({ success: true, accepted: accept })
-  } catch (err) {
+  } catch {
     await client.query('ROLLBACK')
     res.status(500).json({ error: 'Ошибка' })
   } finally { client.release() }
@@ -1310,76 +1334,90 @@ app.patch('/api/match/rooms/:id/respond', authMiddleware, async (req, res) => {
 
 app.post('/api/match/rooms/:id/round', authMiddleware, async (req, res) => {
   try {
-    const roomResult = await pool.query('SELECT * FROM match_rooms WHERE id = $1', [req.params.id])
-    if (roomResult.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
-    const room = roomResult.rows[0]
+    const rr = await pool.query('SELECT * FROM match_rooms WHERE id = $1', [req.params.id])
+    if (rr.rows.length === 0) return res.status(404).json({ error: 'Не найдена' })
+    const room = rr.rows[0]
     if (room.organizer_id !== req.user.id) return res.status(403).json({ error: 'Только организатор' })
     if (room.status === 'cancelled') return res.status(400).json({ error: 'Закрыта' })
 
     if (room.current_round === 1) {
-      const notResp = await pool.query('SELECT COUNT(*) FROM match_participants WHERE room_id = $1 AND responded = FALSE', [req.params.id])
+      const notResp = await pool.query(
+        `SELECT COUNT(*) FROM match_participants WHERE room_id = $1 AND responded = FALSE`,
+        [req.params.id]
+      )
       if (parseInt(notResp.rows[0].count) > 0) return res.status(400).json({ error: 'Не все приняли' })
     }
 
-    const participants = await pool.query('SELECT user_id FROM match_participants WHERE room_id = $1', [req.params.id])
-    const participantIds = participants.rows.map(p => p.user_id)
-    let moviesQuery, params = []
+    const parts = await pool.query(
+      'SELECT user_id FROM match_participants WHERE room_id = $1', [req.params.id]
+    )
+    const pids = parts.rows.map(p => p.user_id)
+    let mq, params = []
 
     if (room.current_round === 1) {
-      params.push(participantIds)
+      params.push(pids)
       switch (room.criterion) {
         case 'common_want':
-          moviesQuery = `SELECT movie_id FROM user_movies WHERE user_id = ANY($1) AND status = 'want_to_watch' GROUP BY movie_id HAVING COUNT(DISTINCT user_id) = $2`
-          params.push(participantIds.length)
+          mq = `SELECT movie_id, movie_type FROM user_movies
+                WHERE user_id = ANY($1) AND status = 'want_to_watch'
+                GROUP BY movie_id, movie_type
+                HAVING COUNT(DISTINCT user_id) = $2`
+          params.push(pids.length)
           break
         case 'common_all':
-          moviesQuery = `SELECT movie_id FROM user_movies WHERE user_id = ANY($1) GROUP BY movie_id HAVING COUNT(DISTINCT user_id) = $2`
-          params.push(participantIds.length)
+          mq = `SELECT movie_id, movie_type FROM user_movies
+                WHERE user_id = ANY($1)
+                GROUP BY movie_id, movie_type
+                HAVING COUNT(DISTINCT user_id) = $2`
+          params.push(pids.length)
           break
         case 'all_want':
-          moviesQuery = `SELECT DISTINCT movie_id FROM user_movies WHERE user_id = ANY($1) AND status = 'want_to_watch'`
+          mq = `SELECT DISTINCT movie_id, movie_type FROM user_movies
+                WHERE user_id = ANY($1) AND status = 'want_to_watch'`
           break
         default:
-          moviesQuery = `SELECT DISTINCT movie_id FROM user_movies WHERE user_id = ANY($1)`
+          mq = `SELECT DISTINCT movie_id, movie_type FROM user_movies WHERE user_id = ANY($1)`
       }
     } else {
-      const prev = await pool.query(
-        `SELECT movie_id FROM match_votes WHERE room_id = $1 AND round = $2 AND vote = 'yes' GROUP BY movie_id HAVING COUNT(DISTINCT user_id) = $3`,
-        [req.params.id, room.current_round - 1, participantIds.length]
-      )
-      const approvedIds = prev.rows.map(r => r.movie_id)
-      if (approvedIds.length === 0) return res.json({ movies: [], round: room.current_round })
-      for (const movieId of approvedIds) {
-        await pool.query(
-          `INSERT INTO match_movies (room_id, movie_id, round) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-          [req.params.id, movieId, room.current_round]
-        )
+      const prev = await pool.query(`
+        SELECT movie_id, movie_type FROM match_votes
+        WHERE room_id = $1 AND round = $2 AND vote = 'yes'
+        GROUP BY movie_id, movie_type
+        HAVING COUNT(DISTINCT user_id) = $3
+      `, [req.params.id, room.current_round - 1, pids.length])
+      if (prev.rows.length === 0) return res.json({ movies: [], round: room.current_round })
+      for (const row of prev.rows) {
+        await pool.query(`
+          INSERT INTO match_movies (room_id, movie_id, movie_type, round)
+          VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING
+        `, [req.params.id, row.movie_id, row.movie_type, room.current_round])
       }
-      moviesQuery = `SELECT movie_id FROM match_movies WHERE room_id = $1 AND round = $2`
+      mq = `SELECT movie_id, movie_type FROM match_movies WHERE room_id = $1 AND round = $2`
       params.push(req.params.id, room.current_round)
     }
 
     if (room.current_round === 1) {
-      const movs = await pool.query(moviesQuery, params)
+      const movs = await pool.query(mq, params)
       if (movs.rows.length === 0) return res.json({ movies: [], round: 1 })
       for (const row of movs.rows) {
-        await pool.query(
-          `INSERT INTO match_movies (room_id, movie_id, round) VALUES ($1, $2, 1) ON CONFLICT DO NOTHING`,
-          [req.params.id, row.movie_id]
-        )
+        await pool.query(`
+          INSERT INTO match_movies (room_id, movie_id, movie_type, round)
+          VALUES ($1, $2, $3, 1) ON CONFLICT DO NOTHING
+        `, [req.params.id, row.movie_id, row.movie_type])
       }
     }
 
     await pool.query(`UPDATE match_rooms SET status = 'voting' WHERE id = $1`, [req.params.id])
-    const moviesData = await pool.query(
-      `SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId",
-         mv.name_ru AS "nameRu", mv.name_en AS "nameEn", mv.name_original AS "nameOriginal",
-         mv.year, mv.poster_url_preview AS "posterUrlPreview"
-       FROM match_movies m LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id
-       WHERE m.room_id = $1 AND m.round = $2`, [req.params.id, room.current_round]
-    )
+    const md = await pool.query(`
+      SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId", m.movie_type AS "type",
+        mv.name_ru AS "nameRu", mv.name_original AS "nameOriginal",
+        mv.year, mv.poster_url_preview AS "posterUrlPreview"
+      FROM match_movies m
+      LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id AND mv.type = m.movie_type
+      WHERE m.room_id = $1 AND m.round = $2
+    `, [req.params.id, room.current_round])
     io.to(`match_room_${req.params.id}`).emit('match:round_started', { roomId: req.params.id, round: room.current_round })
-    res.json({ movies: moviesData.rows, round: room.current_round })
+    res.json({ movies: md.rows, round: room.current_round })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка' })
@@ -1387,102 +1425,121 @@ app.post('/api/match/rooms/:id/round', authMiddleware, async (req, res) => {
 })
 
 app.post('/api/match/rooms/:id/vote', authMiddleware, async (req, res) => {
-  const { movieId, vote } = req.body
+  const { movieId, movieType, vote } = req.body
   if (!['yes', 'no'].includes(vote)) return res.status(400).json({ error: 'Неверный голос' })
   try {
-    const room = await pool.query('SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id])
-    const round = room.rows[0]?.current_round || 1
-    await pool.query(
-      `INSERT INTO match_votes (room_id, movie_id, user_id, vote, round) VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (room_id, movie_id, user_id, round) DO UPDATE SET vote = EXCLUDED.vote`,
-      [req.params.id, movieId, req.user.id, vote, round]
+    const rr = await pool.query(
+      'SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id]
     )
-    io.to(`match_room_${req.params.id}`).emit('match:vote', { roomId: req.params.id, movieId, userId: req.user.id })
+    const round = rr.rows[0]?.current_round || 1
+    await pool.query(`
+      INSERT INTO match_votes (room_id, movie_id, movie_type, user_id, vote, round)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (room_id, movie_id, user_id, round) DO UPDATE SET vote = EXCLUDED.vote
+    `, [req.params.id, movieId, movieType, req.user.id, vote, round])
+    io.to(`match_room_${req.params.id}`).emit('match:vote', {
+      roomId: req.params.id, movieId, userId: req.user.id,
+    })
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/match/rooms/:id/votes/:movieId', authMiddleware, async (req, res) => {
   try {
-    const room = await pool.query('SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id])
-    const round = room.rows[0]?.current_round || 1
-    const total = await pool.query('SELECT COUNT(*) FROM match_participants WHERE room_id = $1', [req.params.id])
-    const votes = await pool.query(
-      `SELECT COUNT(DISTINCT user_id) FROM match_votes WHERE room_id = $1 AND movie_id = $2 AND round = $3`,
-      [req.params.id, req.params.movieId, round]
+    const rr = await pool.query(
+      'SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id]
     )
-    const totalP = parseInt(total.rows[0].count)
-    const voted = parseInt(votes.rows[0].count)
+    const round = rr.rows[0]?.current_round || 1
+    const tot = await pool.query(
+      'SELECT COUNT(*) FROM match_participants WHERE room_id = $1', [req.params.id]
+    )
+    const v = await pool.query(`
+      SELECT COUNT(DISTINCT user_id) FROM match_votes
+      WHERE room_id = $1 AND movie_id = $2 AND round = $3
+    `, [req.params.id, req.params.movieId, round])
+    const totalP = parseInt(tot.rows[0].count)
+    const voted = parseInt(v.rows[0].count)
     res.json({ allVoted: voted === totalP, votedCount: voted, totalParticipants: totalP })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.get('/api/match/rooms/:id/results', authMiddleware, async (req, res) => {
   try {
-    const room = await pool.query('SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id])
-    const round = room.rows[0]?.current_round || 1
-    const total = await pool.query('SELECT COUNT(*) FROM match_participants WHERE room_id = $1', [req.params.id])
-    const totalP = parseInt(total.rows[0].count)
-
-    const result = await pool.query(
-      `SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId",
-         mv.name_ru AS "nameRu", mv.name_en AS "nameEn", mv.name_original AS "nameOriginal",
-         mv.year, mv.poster_url_preview AS "posterUrlPreview"
-       FROM match_movies m
-       LEFT JOIN match_votes v ON v.room_id = m.room_id AND v.movie_id = m.movie_id AND v.round = $2
-       LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id
-       WHERE m.room_id = $1 AND m.round = $2
-       GROUP BY m.movie_id, mv.name_ru, mv.name_en, mv.name_original, mv.year, mv.poster_url_preview
-       HAVING COUNT(CASE WHEN v.vote = 'yes' THEN 1 END) = $3`,
-      [req.params.id, round, totalP]
+    const rr = await pool.query(
+      'SELECT current_round FROM match_rooms WHERE id = $1', [req.params.id]
     )
-    res.json({ approved: result.rows, round })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    const round = rr.rows[0]?.current_round || 1
+    const tot = await pool.query(
+      'SELECT COUNT(*) FROM match_participants WHERE room_id = $1', [req.params.id]
+    )
+    const totalP = parseInt(tot.rows[0].count)
+
+    const r = await pool.query(`
+      SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId", m.movie_type AS "type",
+        mv.name_ru AS "nameRu", mv.name_original AS "nameOriginal",
+        mv.year, mv.poster_url_preview AS "posterUrlPreview"
+      FROM match_movies m
+      LEFT JOIN match_votes v
+        ON v.room_id = m.room_id AND v.movie_id = m.movie_id
+        AND v.movie_type = m.movie_type AND v.round = $2
+      LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id AND mv.type = m.movie_type
+      WHERE m.room_id = $1 AND m.round = $2
+      GROUP BY m.movie_id, m.movie_type, mv.name_ru, mv.name_original, mv.year, mv.poster_url_preview
+      HAVING COUNT(CASE WHEN v.vote = 'yes' THEN 1 END) = $3
+    `, [req.params.id, round, totalP])
+    res.json({ approved: r.rows, round })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.post('/api/match/rooms/:id/next-round', authMiddleware, async (req, res) => {
   try {
-    const roomResult = await pool.query('SELECT * FROM match_rooms WHERE id = $1', [req.params.id])
-    const room = roomResult.rows[0]
+    const rr = await pool.query('SELECT * FROM match_rooms WHERE id = $1', [req.params.id])
+    const room = rr.rows[0]
     if (room.organizer_id !== req.user.id) return res.status(403).json({ error: 'Только организатор' })
     const newRound = room.current_round + 1
-    const participants = await pool.query('SELECT user_id FROM match_participants WHERE room_id = $1', [req.params.id])
-
-    const approved = await pool.query(
-      `SELECT movie_id FROM match_votes WHERE room_id = $1 AND round = $2 AND vote = 'yes' GROUP BY movie_id HAVING COUNT(DISTINCT user_id) = $3`,
-      [req.params.id, room.current_round, participants.rows.length]
+    const parts = await pool.query(
+      'SELECT user_id FROM match_participants WHERE room_id = $1', [req.params.id]
     )
-    const approvedIds = approved.rows.map(r => r.movie_id)
-    if (approvedIds.length === 0) return res.status(400).json({ error: 'Нет одобренных' })
 
-    for (const movieId of approvedIds) {
-      await pool.query(
-        `INSERT INTO match_movies (room_id, movie_id, round) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [req.params.id, movieId, newRound]
-      )
+    const approved = await pool.query(`
+      SELECT movie_id, movie_type FROM match_votes
+      WHERE room_id = $1 AND round = $2 AND vote = 'yes'
+      GROUP BY movie_id, movie_type
+      HAVING COUNT(DISTINCT user_id) = $3
+    `, [req.params.id, room.current_round, parts.rows.length])
+    if (approved.rows.length === 0) return res.status(400).json({ error: 'Нет одобренных' })
+
+    for (const row of approved.rows) {
+      await pool.query(`
+        INSERT INTO match_movies (room_id, movie_id, movie_type, round)
+        VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING
+      `, [req.params.id, row.movie_id, row.movie_type, newRound])
     }
-    await pool.query(`UPDATE match_rooms SET current_round = $1, status = 'voting' WHERE id = $2`, [newRound, req.params.id])
-
-    const moviesData = await pool.query(
-      `SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId",
-         mv.name_ru AS "nameRu", mv.name_en AS "nameEn", mv.name_original AS "nameOriginal",
-         mv.year, mv.poster_url_preview AS "posterUrlPreview"
-       FROM match_movies m LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id
-       WHERE m.room_id = $1 AND m.round = $2`, [req.params.id, newRound]
+    await pool.query(
+      `UPDATE match_rooms SET current_round = $1, status = 'voting' WHERE id = $2`,
+      [newRound, req.params.id]
     )
+
+    const md = await pool.query(`
+      SELECT m.movie_id AS "kinopoiskId", m.movie_id AS "tmdbId", m.movie_type AS "type",
+        mv.name_ru AS "nameRu", mv.name_original AS "nameOriginal",
+        mv.year, mv.poster_url_preview AS "posterUrlPreview"
+      FROM match_movies m
+      LEFT JOIN movies mv ON mv.tmdb_id = m.movie_id AND mv.type = m.movie_type
+      WHERE m.room_id = $1 AND m.round = $2
+    `, [req.params.id, newRound])
     io.to(`match_room_${req.params.id}`).emit('match:round_started', { roomId: req.params.id, round: newRound })
-    res.json({ success: true, round: newRound, movies: moviesData.rows })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+    res.json({ success: true, round: newRound, movies: md.rows })
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
 app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
   try {
-    const participant = await pool.query(
+    const p = await pool.query(
       'SELECT * FROM match_participants WHERE room_id = $1 AND user_id = $2',
       [req.params.id, req.user.id]
     )
-    if (participant.rows.length === 0) return res.status(403).json({ error: 'Вы не участник' })
-
+    if (p.rows.length === 0) return res.status(403).json({ error: 'Вы не участник' })
     await pool.query(
       `UPDATE match_rooms SET status = 'cancelled', cancelled_by = $1, cancelled_at = NOW() WHERE id = $2`,
       [req.user.id, req.params.id]
@@ -1492,100 +1549,77 @@ app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
       'SELECT user_id FROM match_participants WHERE room_id = $1 AND user_id != $2',
       [req.params.id, req.user.id]
     )
-    for (const p of others.rows) {
-      await createNotification(p.user_id, 'match_cancelled', `@${canceller.rows[0]?.name} отменил`, '/match')
+    for (const o of others.rows) {
+      await createNotification(o.user_id, 'match_cancelled',
+        `@${canceller.rows[0]?.name} отменил`, '/match')
     }
-    io.to(`match_room_${req.params.id}`).emit('match:cancelled', { roomId: req.params.id, cancelledByName: canceller.rows[0]?.name })
+    io.to(`match_room_${req.params.id}`).emit('match:cancelled', {
+      roomId: req.params.id, cancelledByName: canceller.rows[0]?.name,
+    })
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: 'Ошибка' }) }
+  } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
-// ───────────────────────── BACKGROUND UPDATE ─────────────────────────
+// ═════════════════════════ BACKGROUND UPDATE ═════════════════════════
 
 async function updateOldMovies(batchSize = 41) {
-  console.log(`🕒 Запуск фонового обновления из TMDB... Батч: ${batchSize}`)
-  
+  console.log(`🕒 Background update, batch=${batchSize}`)
   try {
-    // Находим самые старые по last_checked_at
-    const result = await pool.query(`
-      SELECT tmdb_id FROM movies 
-      WHERE tmdb_id > 0
-      ORDER BY COALESCE(last_checked_at, created_at) ASC 
+    const r = await pool.query(`
+      SELECT tmdb_id, type FROM movies WHERE tmdb_id > 0
+      ORDER BY COALESCE(last_checked_at, created_at) ASC
       LIMIT $1
     `, [batchSize])
+    if (r.rows.length === 0) { console.log('✅ Nothing to update'); return }
 
-    if (result.rows.length === 0) {
-      console.log('✅ Нет фильмов для обновления')
-      return
-    }
-
-    let success = 0, failed = 0
-    const processedIds = [] // <--- Массив для сохранения ID обновленных фильмов
-
-    for (const row of result.rows) {
+    let ok = 0, fail = 0
+    const processed = []
+    for (const row of r.rows) {
       try {
-        await upsertTmdbMovie(row.tmdb_id)
-        processedIds.push(row.tmdb_id) // <--- Запоминаем ID
-        success++
-        console.log(`  ✓ ${row.tmdb_id} — обновлен`)
+        await upsertTmdbMovie(row.tmdb_id, row.type)
+        processed.push(row.tmdb_id)
+        ok++
       } catch (err) {
-        failed++
-        console.error(`  ❌ ${row.tmdb_id} — ошибка: ${err.message}`)
+        fail++
+        console.error(`❌ ${row.type}/${row.tmdb_id}:`, err.message)
       }
-      await new Promise(r => setTimeout(r, 250)) // Пауза 250мс
+      await new Promise(r => setTimeout(r, 250))
     }
-
-    // Отмечаем глобальное обновление ТОЛЬКО для тех, кого обновили
-    if (processedIds.length > 0) {
+    if (processed.length > 0) {
       await pool.query(
-        `UPDATE movies SET last_checked_at_all = NOW() WHERE tmdb_id = ANY($1)`, 
-        [processedIds]
+        'UPDATE movies SET last_checked_at_all = NOW() WHERE tmdb_id = ANY($1)',
+        [processed]
       )
     }
-    
-    console.log(`🏁 Обновление завершено: ✅ ${success} / ❌ ${failed}`)
-    
+    console.log(`🏁 Done: ✅ ${ok} / ❌ ${fail}`)
   } catch (err) {
-    console.error('Ошибка в updateOldMovies:', err)
+    console.error('updateOldMovies:', err)
   }
 }
 
 async function checkAndUpdateOnStartup() {
   try {
-    const result = await pool.query(`SELECT MAX(last_checked_at_all) as last_update FROM movies`)
-    const lastUpdate = result.rows[0]?.last_update
-    const now = new Date()
+    const r = await pool.query('SELECT MAX(last_checked_at_all) AS lu FROM movies')
+    const last = r.rows[0]?.lu
+    const now = Date.now()
+    let batch = 41
 
-    let batchSize = 41
-
-    if (!lastUpdate) {
-      console.log('🕒 Глобальное обновление никогда не запускалось. Запускаю полный батч (984)...')
-      batchSize = 984
+    if (!last) {
+      batch = 984
     } else {
-      const lastTime = new Date(lastUpdate).getTime()
-      const diffHours = (now.getTime() - lastTime) / (1000 * 60 * 60)
-      
-      // Если прошло больше 24 часов, считаем сколько нужно обновить (20 в час, но не больше 480)
-      if (diffHours >= 24) {
-         batchSize = Math.min(984, Math.max(41, Math.floor(diffHours * 41)))
-         console.log(`🕒 Прошло ${diffHours.toFixed(1)} ч. Запускаю обновление (батч: ${batchSize})...`)
-      } else {
-         console.log(`🕒 Прошло ${diffHours.toFixed(1)} ч. (меньше 24). Пропускаю.`)
-         return
-      }
+      const dh = (now - new Date(last).getTime()) / (1000 * 60 * 60)
+      if (dh < 1) return
+      if (dh >= 24) batch = 984
+      else batch = Math.min(984, Math.floor(dh * 41))
     }
-    
-    await updateOldMovies(batchSize)
-
+    await updateOldMovies(batch)
   } catch (err) {
-    console.error('Ошибка проверки времени обновления:', err)
+    console.error('checkAndUpdateOnStartup:', err)
   }
 }
 
-// Запускаем через 10 секунд после старта сервера
 setTimeout(checkAndUpdateOnStartup, 10000)
-// ───────────────────────── START ─────────────────────────
 
 httpServer.listen(process.env.PORT, () => {
-  console.log(`Сервер запущен на порту ${process.env.PORT}`)
+  console.log(`Server on port ${process.env.PORT}`)
 })

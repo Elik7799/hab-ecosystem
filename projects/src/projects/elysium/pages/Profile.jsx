@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
-import { getMovieName } from '../../../utils/ElysiumMovieName'
+import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { ProfileSkeleton } from '../components/ElysiumSkeleton'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
 
@@ -44,238 +44,129 @@ export default function ElysiumProfile() {
 
   useEffect(() => {
     if (!token || !profileId) return
-
-    const fetchProfile = async () => {
-      setLoading(true)
-      setError('')
-
+    (async () => {
+      setLoading(true); setError('')
       try {
-        const res = await fetch(`${API_URL_BACKEND}/users/${profileId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-
-        const data = await res.json()
-        if (!res.ok) {
-          setError(data.error || 'Профиль не найден')
-          return
-        }
-
-        setProfile(data.user)
-        setStats(data.stats)
-        setIsFriend(data.isFriend)
-        setFriendshipStatus(data.friendshipStatus || 'none')
-        setFriendshipId(data.friendshipId || null)
-        setIsOwn(data.isOwn)
-      } catch (err) {
-        setError('Не удалось загрузить профиль')
-        showError('Ошибка загрузки профиля')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchProfile()
+        const r = await fetch(`${API_URL_BACKEND}/users/${profileId}`, { headers: { Authorization: `Bearer ${token}` } })
+        const d = await r.json()
+        if (!r.ok) { setError(d.error || 'Не найден'); return }
+        setProfile(d.user); setStats(d.stats)
+        setIsFriend(d.isFriend); setFriendshipStatus(d.friendshipStatus || 'none')
+        setFriendshipId(d.friendshipId || null); setIsOwn(d.isOwn)
+      } catch {
+        setError('Не удалось загрузить профиль'); showError('Ошибка')
+      } finally { setLoading(false) }
+    })()
   }, [token, profileId])
 
   useEffect(() => {
     if (!token || !profileId) return
-
-    const fetchMovies = async () => {
+    (async () => {
       setMoviesLoading(true)
       try {
-        const url = `${API_URL_BACKEND}/users/${profileId}/movies${filter !== 'all' ? `?status=${filter}` : ''
-          }`
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await res.json()
-        setMovies(data.movies || [])
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setMoviesLoading(false)
-      }
-    }
-
-    fetchMovies()
+        const url = `${API_URL_BACKEND}/users/${profileId}/movies${filter !== 'all' ? `?status=${filter}` : ''}`
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+        const d = await r.json()
+        setMovies(d.movies || [])
+      } catch {} finally { setMoviesLoading(false) }
+    })()
   }, [token, profileId, filter])
 
   const handleShowCommon = async () => {
     if (!isFriend) return
-
     try {
-      const res = await fetch(`${API_URL_BACKEND}/users/${profileId}/common`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      setCommonMovies(data.movies || [])
-      setShowCommon(true)
-    } catch (err) {
-      console.error(err)
-      showError('Ошибка загрузки общих фильмов')
-    }
+      const r = await fetch(`${API_URL_BACKEND}/users/${profileId}/common`, { headers: { Authorization: `Bearer ${token}` } })
+      const d = await r.json()
+      setCommonMovies(d.movies || []); setShowCommon(true)
+    } catch { showError('Ошибка') }
   }
 
   const handleAddFriend = async () => {
     setActionLoading(true)
     try {
-      const res = await fetch(`${API_URL_BACKEND}/friends`, {
+      const r = await fetch(`${API_URL_BACKEND}/friends`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ friendId: parseInt(profileId) }),
       })
-
-      const data = await res.json()
-      if (!res.ok) {
-        showError(data.error || 'Ошибка')
-        return
-      }
-
-      setFriendshipStatus('pending_outgoing')
-      setFriendshipId(data.id)
+      const d = await r.json()
+      if (!r.ok) { showError(d.error || 'Ошибка'); return }
+      setFriendshipStatus('pending_outgoing'); setFriendshipId(d.id)
       showSuccess('Заявка отправлена!')
-    } catch (err) {
-      console.error(err)
-      showError('Ошибка отправки заявки')
-    } finally {
-      setActionLoading(false)
-    }
+    } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
   const handleRemoveFriend = async () => {
     if (!friendshipId) return
-
     if (!confirm('Удалить из друзей?')) return
-
     setActionLoading(true)
     try {
-      const res = await fetch(`${API_URL_BACKEND}/friends/${friendshipId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+      const r = await fetch(`${API_URL_BACKEND}/friends/${friendshipId}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       })
-
-      if (!res.ok) {
-        showError('Ошибка удаления')
-        return
-      }
-
-      setIsFriend(false)
-      setFriendshipStatus('none')
-      setFriendshipId(null)
-      showSuccess('Удалено из друзей')
-    } catch (err) {
-      console.error(err)
-      showError('Ошибка удаления')
-    } finally {
-      setActionLoading(false)
-    }
+      if (!r.ok) { showError('Ошибка'); return }
+      setIsFriend(false); setFriendshipStatus('none'); setFriendshipId(null)
+      showSuccess('Удалено')
+    } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
   const handleAcceptFriend = async () => {
     if (!friendshipId) return
-
     setActionLoading(true)
     try {
-      const res = await fetch(`${API_URL_BACKEND}/friends/${friendshipId}`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
+      const r = await fetch(`${API_URL_BACKEND}/friends/${friendshipId}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
       })
-
-      if (!res.ok) {
-        showError('Ошибка')
-        return
-      }
-
-      setIsFriend(true)
-      setFriendshipStatus('accepted')
+      if (!r.ok) { showError('Ошибка'); return }
+      setIsFriend(true); setFriendshipStatus('accepted')
       showSuccess('Заявка принята')
-    } catch (err) {
-      console.error(err)
-      showError('Ошибка принятия')
-    } finally {
-      setActionLoading(false)
-    }
+    } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
-  if (loading) {
-    return <ProfileSkeleton />
-  }
+  if (loading) return <ProfileSkeleton />
 
   if (error || !profile) {
     return (
       <div className="profile-body">
-        <p className="profile-error">{error || 'Профиль не найден'}</p>
-        <Link to="/elysium" className="profile-back">
-          ← На главную
-        </Link>
+        <p className="profile-error">{error || 'Не найден'}</p>
+        <Link to="/elysium" className="profile-back">← На главную</Link>
       </div>
     )
   }
 
   const joinDate = new Date(profile.created_at).toLocaleDateString('ru-RU', {
-    year: 'numeric',
-    month: 'long',
+    year: 'numeric', month: 'long',
   })
 
   return (
     <div className="profile-body">
       <div className="profile-header">
-        <div className="profile-avatar">
-          {profile.name.charAt(0).toUpperCase()}
-        </div>
+        <div className="profile-avatar">{profile.name.charAt(0).toUpperCase()}</div>
         <div className="profile-info">
           <h1 className="profile-name">@{profile.name}</h1>
           {isOwn && <p className="profile-email">{profile.email}</p>}
           <p className="profile-date">С нами с {joinDate}</p>
           {isFriend && <span className="profile-badge">У вас в друзьях</span>}
         </div>
-
         {!isOwn && (
           <div className="profile-actions">
             {friendshipStatus === 'none' && (
-              <button
-                type="button"
-                className="profile-action profile-action-primary"
-                onClick={handleAddFriend}
-                disabled={actionLoading}
-              >
+              <button type="button" className="profile-action profile-action-primary" onClick={handleAddFriend} disabled={actionLoading}>
                 {actionLoading ? '...' : 'Добавить в друзья'}
               </button>
             )}
-
             {friendshipStatus === 'pending_outgoing' && (
-              <button
-                type="button"
-                className="profile-action profile-action-secondary"
-                onClick={handleRemoveFriend}
-                disabled={actionLoading}
-              >
+              <button type="button" className="profile-action profile-action-secondary" onClick={handleRemoveFriend} disabled={actionLoading}>
                 {actionLoading ? '...' : 'Отменить заявку'}
               </button>
             )}
-
             {friendshipStatus === 'pending_incoming' && (
-              <button
-                type="button"
-                className="profile-action profile-action-primary"
-                onClick={handleAcceptFriend}
-                disabled={actionLoading}
-              >
+              <button type="button" className="profile-action profile-action-primary" onClick={handleAcceptFriend} disabled={actionLoading}>
                 {actionLoading ? '...' : 'Принять заявку'}
               </button>
             )}
-
             {friendshipStatus === 'accepted' && (
-              <button
-                type="button"
-                className="profile-action profile-action-danger"
-                onClick={handleRemoveFriend}
-                disabled={actionLoading}
-              >
+              <button type="button" className="profile-action profile-action-danger" onClick={handleRemoveFriend} disabled={actionLoading}>
                 {actionLoading ? '...' : 'Удалить из друзей'}
               </button>
             )}
@@ -300,11 +191,7 @@ export default function ElysiumProfile() {
 
       {!isOwn && isFriend && (
         <div className="profile-common-btn">
-          <button
-            type="button"
-            className="profile-btn"
-            onClick={handleShowCommon}
-          >
+          <button type="button" className="profile-btn" onClick={handleShowCommon}>
             Показать общие фильмы
           </button>
         </div>
@@ -313,39 +200,24 @@ export default function ElysiumProfile() {
       {showCommon && (
         <div className="profile-common">
           <h2 className="profile-heading">
-            Общие фильмы{' '}
-            <span className="profile-count">{commonMovies.length}</span>
+            Общие фильмы <span className="profile-count">{commonMovies.length}</span>
           </h2>
           {commonMovies.length === 0 ? (
-            <p className="profile-empty">У вас пока нет общих фильмов</p>
+            <p className="profile-empty">Нет общих фильмов</p>
           ) : (
             <div className="profile-moviesgrid">
-              {commonMovies.map((movie) => (
-                <Link
-                  key={movie.kinopoiskId}
-                  to={`/elysium/movie/${movie.kinopoiskId}`}
-                  className="profile-moviecard"
-                >
-                  <img
-                    src={movie.posterUrlPreview}
-                    alt={getMovieName(movie)}
-                    className="profile-movieposter"
-                  />
+              {commonMovies.map(m => (
+                <Link key={`${m.kinopoiskId}:${m.type}`} to={getMoviePath(m)} className="profile-moviecard">
+                  <img src={m.posterUrlPreview} alt={getMovieName(m)} className="profile-movieposter" />
                   <div className="profile-movieinfo">
-                    <p className="profile-moviename">{getMovieName(movie)}</p>
-                    <p className="profile-movieyear">{movie.year && movie.year !== 0 ? movie.year : '—'}</p>
+                    <p className="profile-moviename">{getMovieName(m)}</p>
+                    <p className="profile-movieyear">{m.year && m.year !== 0 ? m.year : '—'}</p>
                   </div>
                 </Link>
               ))}
             </div>
           )}
-          <button
-            type="button"
-            className="profile-btn profile-btn-secondary"
-            onClick={() => setShowCommon(false)}
-          >
-            Скрыть
-          </button>
+          <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setShowCommon(false)}>Скрыть</button>
         </div>
       )}
 
@@ -354,52 +226,36 @@ export default function ElysiumProfile() {
           {isOwn ? 'Мои фильмы' : `Фильмы @${profile.name}`}
           <span className="profile-count">{movies.length}</span>
         </h2>
-
         <div className="profile-filters">
-          {STATUS_FILTERS.map((f) => (
+          {STATUS_FILTERS.map(f => (
             <button
               key={f.value}
-              className={
-                filter === f.value
-                  ? 'profile-filterbtn active'
-                  : 'profile-filterbtn'
-              }
+              className={filter === f.value ? 'profile-filterbtn active' : 'profile-filterbtn'}
               onClick={() => setFilter(f.value)}
             >
               {f.label}
             </button>
           ))}
         </div>
-
         {moviesLoading ? (
           <p className="profile-empty">Загрузка...</p>
         ) : movies.length === 0 ? (
           <p className="profile-empty">
-            {isOwn
-              ? 'У вас пока нет фильмов в этой категории'
-              : 'У пользователя нет фильмов в этой категории'}
+            {isOwn ? 'Нет фильмов' : 'У пользователя нет фильмов'}
           </p>
         ) : (
           <div className="profile-moviesgrid">
-            {movies.map((movie) => (
+            {movies.map(m => (
               <Link
-                key={movie.kinopoiskId}
-                to={`/elysium/movie/${movie.kinopoiskId}`}
-                className={`profile-moviecard status-${movie.my_status || 'not_watched'}`}
+                key={`${m.kinopoiskId}:${m.type}`}
+                to={getMoviePath(m)}
+                className={`profile-moviecard status-${m.my_status || 'not_watched'}`}
               >
-                <img
-                  src={movie.posterUrlPreview}
-                  alt={getMovieName(movie)}
-                  className="profile-movieposter"
-                />
+                <img src={m.posterUrlPreview} alt={getMovieName(m)} className="profile-movieposter" />
                 <div className="profile-movieinfo">
-                  <p className="profile-moviename">{getMovieName(movie)}</p>
-                  <p className="profile-movieyear">{movie.year && movie.year !== 0 ? movie.year : '—'}</p>
-                  {isOwn && (
-                    <span className="profile-moviestatus">
-                      {STATUS_LABELS[movie.status]}
-                    </span>
-                  )}
+                  <p className="profile-moviename">{getMovieName(m)}</p>
+                  <p className="profile-movieyear">{m.year && m.year !== 0 ? m.year : '—'}</p>
+                  {isOwn && <span className="profile-moviestatus">{STATUS_LABELS[m.status]}</span>}
                 </div>
               </Link>
             ))}

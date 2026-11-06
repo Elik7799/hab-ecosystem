@@ -23,25 +23,21 @@ function stripHtml(html) {
 }
 
 function sortByYear(items) {
-  return [...items].sort((a, b) => {
-    const yearA = a.year || Infinity
-    const yearB = b.year || Infinity
-    return yearA - yearB
-  })
+  return [...items].sort((a, b) => (a.year || Infinity) - (b.year || Infinity))
 }
 
-export default function ElysiumMovieDetail() {
+export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
   const { id } = useParams()
   const { token } = useAuth()
+  const isSeries = dbType === 'TV_SERIES'
+  const pathType = isSeries ? 'tv' : 'movie'
 
   const [movie, setMovie] = useState(null)
-  const [facts, setFacts] = useState([])
   const [relations, setRelations] = useState([])
   const [similars, setSimilars] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('not_watched')
-  const [factsExpanded, setFactsExpanded] = useState(false)
   const [relatedStatuses, setRelatedStatuses] = useState({})
 
   const [episodes, setEpisodes] = useState([])
@@ -55,177 +51,129 @@ export default function ElysiumMovieDetail() {
     setError('')
     setMovie(null)
 
-    const authHeaders = {
-      Authorization: `Bearer ${token}`,
-    }
+    const h = { Authorization: `Bearer ${token}` }
 
-    const fetchMovie = fetch(`${API_URL_BACKEND}/kinopoisk/${id}`, {
-      headers: authHeaders,
-    }).then((res) => {
-      if (!res.ok) throw new Error('Ошибка загрузки фильма')
-      return res.json()
+    const fetchMovie = fetch(
+      `${API_URL_BACKEND}/kinopoisk/${pathType}/${id}`, { headers: h }
+    ).then(r => {
+      if (!r.ok) throw new Error('Ошибка загрузки')
+      return r.json()
     })
-
-    const fetchFacts = fetch(`${API_URL_BACKEND}/kinopoisk/${id}/facts`, {
-      headers: authHeaders,
-    })
-      .then((res) => (res.ok ? res.json() : { items: [] }))
-      .catch(() => ({ items: [] }))
 
     const fetchRelations = fetch(
-      `${API_URL_BACKEND}/kinopoisk/${id}/relations`,
-      { headers: authHeaders }
-    )
-      .then((res) => (res.ok ? res.json() : { items: [] }))
-      .catch(() => ({ items: [] }))
+      `${API_URL_BACKEND}/kinopoisk/${pathType}/${id}/relations`, { headers: h }
+    ).then(r => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] }))
 
     const fetchSimilars = fetch(
-      `${API_URL_BACKEND}/kinopoisk/${id}/similars`,
-      { headers: authHeaders }
-    )
-      .then((res) => (res.ok ? res.json() : { items: [] }))
-      .catch(() => ({ items: [] }))
+      `${API_URL_BACKEND}/kinopoisk/${pathType}/${id}/similars`, { headers: h }
+    ).then(r => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] }))
 
-    const fetchStatus = fetch(`${API_URL_BACKEND}/movies/${id}`, {
-      headers: authHeaders,
-    })
-      .then((res) => (res.ok ? res.json() : { status: 'not_watched' }))
+    const fetchStatus = fetch(
+      `${API_URL_BACKEND}/movies/${pathType}/${id}`, { headers: h }
+    ).then(r => (r.ok ? r.json() : { status: 'not_watched' }))
       .catch(() => ({ status: 'not_watched' }))
 
-    Promise.all([
-      fetchMovie,
-      fetchFacts,
-      fetchRelations,
-      fetchSimilars,
-      fetchStatus,
-    ])
-      .then(([movieData, factsData, relationsData, similarsData, statusData]) => {
-        if (!movieData || !movieData.kinopoiskId) {
-          throw new Error('Фильм не найден')
-        }
-
+    Promise.all([fetchMovie, fetchRelations, fetchSimilars, fetchStatus])
+      .then(([movieData, relData, simData, statusData]) => {
+        if (!movieData || !movieData.kinopoiskId) throw new Error('Не найдено')
         setMovie(movieData)
-        setFacts(factsData.items || [])
         setStatus(statusData.status)
 
-        const allRelations = relationsData.items || []
-        const allSimilars = similarsData.items || []
-
-        const related = sortByYear(
-          allRelations.filter(
-            (item) => item && RELATED_TYPES.includes(item.relationType)
+        const rel = sortByYear((relData.items || []).filter(i =>
+          i && RELATED_TYPES.includes(i.relationType)
+        ))
+        const sims = sortByYear(
+          Array.from(
+            new Map(
+              (simData.items || []).filter(Boolean).map(i => [i.kinopoiskId, i])
+            ).values()
           )
         )
+        setRelations(rel)
+        setSimilars(sims)
 
-        const similarsFromRelations = allRelations.filter(
-          (item) => item && item.relationType === 'SIMILAR'
-        )
+        const refs = [...rel, ...sims].map(i => ({
+          tmdbId: i.kinopoiskId,
+          type: i.type || 'FILM',
+        })).filter(r => r.tmdbId)
 
-        const combinedSimilars = [...similarsFromRelations, ...allSimilars]
-        const uniqueSimilars = Array.from(
-          new Map(
-            combinedSimilars.filter(Boolean).map((item) => [
-              item.kinopoiskId || item.filmId,
-              item,
-            ])
-          ).values()
-        )
-
-        setRelations(related)
-        setSimilars(sortByYear(uniqueSimilars))
-
-        const allIds = [...related, ...uniqueSimilars]
-          .map((m) => m && (m.kinopoiskId || m.filmId))
-          .filter(Boolean)
-
-        if (allIds.length > 0) {
+        if (refs.length > 0) {
           fetch(`${API_URL_BACKEND}/movies/bulk-statuses`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ movieIds: allIds }),
+            headers: { 'Content-Type': 'application/json', ...h },
+            body: JSON.stringify({ refs }),
           })
-            .then((res) => (res.ok ? res.json() : { statuses: {} }))
-            .then((statusesData) => setRelatedStatuses(statusesData.statuses || {}))
-            .catch((err) => console.warn('Не удалось загрузить статусы:', err))
+            .then(r => (r.ok ? r.json() : { statuses: {} }))
+            .then(d => setRelatedStatuses(d.statuses || {}))
+            .catch(() => {})
         }
       })
-      .catch((err) => {
+      .catch(err => {
         console.error(err)
-        setError('Не удалось загрузить информацию о фильме.')
-        showError('Ошибка загрузки фильма')
+        setError('Не удалось загрузить информацию.')
+        showError('Ошибка загрузки')
       })
       .finally(() => setLoading(false))
-  }, [id, token])
+  }, [id, token, pathType])
 
   useEffect(() => {
-    if (!movie || (movie.type !== 'TV_SERIES' && movie.type !== 'MINI_SERIES')) return
+    if (!movie || movie.type !== 'TV_SERIES' || !token) return
 
-    const fetchSeasons = async () => {
+    (async () => {
       try {
-        const res = await fetch(`${API_URL_BACKEND}/kinopoisk/${id}/seasons`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const h = { Authorization: `Bearer ${token}` }
+        const res = await fetch(
+          `${API_URL_BACKEND}/kinopoisk/tv/${id}/seasons`, { headers: h }
+        )
         const data = await res.json()
         setEpisodes(data.episodes || [])
 
-        // Загружаем отмеченные серии
-        const watchedRes = await fetch(`${API_URL_BACKEND}/kinopoisk/${id}/watched-episodes`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (watchedRes.ok) {
-          const watchedData = await watchedRes.json()
-          const watchedMap = {}
-          watchedData.episodes?.forEach((ep) => {
-            watchedMap[`${ep.season_number}-${ep.episode_number}`] = true
-          })
-          setWatchedEpisodes(watchedMap)
+        const wr = await fetch(
+          `${API_URL_BACKEND}/kinopoisk/tv/${id}/watched-episodes`, { headers: h }
+        )
+        if (wr.ok) {
+          const wd = await wr.json()
+          const m = {}
+          wd.episodes?.forEach(e => { m[`${e.season_number}-${e.episode_number}`] = true })
+          setWatchedEpisodes(m)
         }
       } catch (err) {
-        console.error('Ошибка загрузки серий:', err)
+        console.error('Seasons:', err)
       }
-    }
-
-    fetchSeasons()
+    })()
   }, [movie, id, token])
 
   const handleStatusChange = async (newStatus) => {
     if (!token) return
-
-    const previousStatus = status
+    const prev = status
     setStatus(newStatus)
-
     try {
-      const res = await fetch(`${API_URL_BACKEND}/movies/${id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      })
-
+      const res = await fetch(
+        `${API_URL_BACKEND}/movies/${pathType}/${id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        }
+      )
       if (!res.ok) {
-        setStatus(previousStatus)
-        showError('Не удалось сохранить статус')
-        console.error('Не удалось сохранить статус')
+        setStatus(prev)
+        const d = await res.json()
+        showError(d.error || 'Не удалось сохранить')
       }
-    } catch (err) {
-      setStatus(previousStatus)
-      showError('Не удалось сохранить статус')
-      console.error(err)
+    } catch {
+      setStatus(prev)
+      showError('Не удалось сохранить')
     }
   }
 
   const handleToggleEpisode = async (seasonNumber, episodeNumber) => {
     const key = `${seasonNumber}-${episodeNumber}`
     const isWatched = watchedEpisodes[key]
-
-    // Оптимистичное обновление
-    setWatchedEpisodes((prev) => ({ ...prev, [key]: !isWatched }))
-
+    setWatchedEpisodes(p => ({ ...p, [key]: !isWatched }))
     try {
       const res = await fetch(`${API_URL_BACKEND}/episodes/toggle`, {
         method: 'POST',
@@ -235,32 +183,25 @@ export default function ElysiumMovieDetail() {
         },
         body: JSON.stringify({
           movieId: parseInt(id),
-          seasonNumber,
-          episodeNumber,
+          seasonNumber, episodeNumber,
           watched: !isWatched,
         }),
       })
-
       if (res.ok) {
-        const data = await res.json()
-        setStatus(data.newStatus) // Обновляем статус кнопки
+        const d = await res.json()
+        setStatus(d.newStatus)
       }
-    } catch (err) {
-      console.error(err)
-      // Откатываем при ошибке
-      setWatchedEpisodes((prev) => ({ ...prev, [key]: isWatched }))
+    } catch {
+      setWatchedEpisodes(p => ({ ...p, [key]: isWatched }))
     }
   }
-  const handleBulkToggleSeason = async (seasonNum, action) => {
-    const seasonEpisodes = episodes.filter((e) => e.season_number === seasonNum)
 
-    // Фильтруем только вышедшие серии
-    const airedEpisodes = seasonEpisodes.filter((e) =>
+  const handleBulkToggleSeason = async (seasonNum, action) => {
+    const seasonEps = episodes.filter(e => e.season_number === seasonNum)
+    const aired = seasonEps.filter(e =>
       e.release_date ? new Date(e.release_date) <= new Date() : false
     )
-
-    if (airedEpisodes.length === 0) return
-
+    if (aired.length === 0) return
     try {
       const res = await fetch(`${API_URL_BACKEND}/episodes/bulk-toggle`, {
         method: 'POST',
@@ -271,85 +212,66 @@ export default function ElysiumMovieDetail() {
         body: JSON.stringify({
           movieId: parseInt(id),
           seasonNumber: seasonNum,
-          episodes: airedEpisodes,
+          episodes: aired,
           watched: action === 'watch',
         }),
       })
-
       if (res.ok) {
-        const data = await res.json()
-        setStatus(data.newStatus)
-
-        // Обновляем локальный стейт watchedEpisodes
-        setWatchedEpisodes((prev) => {
+        const d = await res.json()
+        setStatus(d.newStatus)
+        setWatchedEpisodes(prev => {
           const next = { ...prev }
-          airedEpisodes.forEach((ep) => {
-            const key = `${ep.season_number}-${ep.episode_number}`
-            if (action === 'watch') {
-              next[key] = true
-            } else {
-              delete next[key]
-            }
+          aired.forEach(ep => {
+            const k = `${ep.season_number}-${ep.episode_number}`
+            if (action === 'watch') next[k] = true
+            else delete next[k]
           })
           return next
         })
       }
-    } catch (err) {
-      console.error(err)
-      showError('Ошибка отметки сезона')
+    } catch {
+      showError('Ошибка')
     }
   }
 
-  const toggleSeason = (seasonNum) => {
-    setExpandedSeasons((prev) => ({
-      ...prev,
-      [seasonNum]: !prev[seasonNum],
-    }))
+  const toggleSeason = (n) => {
+    setExpandedSeasons(p => ({ ...p, [n]: !p[n] }))
   }
 
-  // ЗАЩИТА ОТ БЕЛОГО ЭКРАНА
-  if (loading) {
-    return <MovieDetailSkeleton />
-  }
+  if (loading) return <MovieDetailSkeleton />
 
   if (error || !movie) {
     return (
       <div className="moviedetail-error">
-        <p>{error || 'Фильм не найден'}</p>
-        <Link to="/elysium" className="loginbutton">
-          Вернуться на главную
-        </Link>
+        <p>{error || 'Не найдено'}</p>
+        <Link to="/elysium" className="loginbutton">Вернуться</Link>
       </div>
     )
   }
 
-  const genres = movie.genres?.map((g) => g.genre).join(', ') || '—'
-  const countries = movie.countries?.map((c) => c.country).join(', ') || '—'
+  const genres = movie.genres?.map(g => g.genre).join(', ') || '—'
+  const countries = movie.countries?.map(c => c.country).join(', ') || '—'
 
-  const visibleFacts = factsExpanded ? facts : facts.slice(0, 3)
-
-  const renderMovieCard = (item, idField) => {
-    if (!item) return null
-    const movieId = item[idField]
-    if (!movieId) return null
-
-    const itemStatus = relatedStatuses[movieId] || 'not_watched'
-
+  const renderCard = (item) => {
+    if (!item?.kinopoiskId) return null
+    const key = `${item.kinopoiskId}:${item.type || 'FILM'}`
+    const st = relatedStatuses[key] || 'not_watched'
+    const path = item.type === 'TV_SERIES' ? 'serial' : 'movie'
     return (
       <Link
-        key={movieId}
-        to={`/elysium/movie/${movieId}`}
-        className={`moviedetail-moviecard moviedetail-moviecardhorizontal status-${itemStatus}`}
+        key={key}
+        to={`/elysium/${path}/${item.kinopoiskId}`}
+        className={`moviedetail-moviecard moviedetail-moviecardhorizontal status-${st}`}
       >
         <img
           src={item.posterUrlPreview || item.posterUrl || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
-          alt={getMovieName(item) || 'Без названия'}
+          alt={getMovieName(item)}
           className="moviedetail-movieposter"
           loading="lazy"
-          onError={(e) => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
+          onError={e => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
         />
         <div className="moviedetail-movieinfo">
-          <p className="moviedetail-moviename">{getMovieName(item) || 'Без названия'}</p>
+          <p className="moviedetail-moviename">{getMovieName(item)}</p>
         </div>
       </Link>
     )
@@ -361,91 +283,55 @@ export default function ElysiumMovieDetail() {
         <div className="moviedetail-poster">
           <img
             src={movie.posterUrl || movie.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
-            alt={getMovieName(movie) || 'Без названия'}
-            onError={(e) => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
+            alt={getMovieName(movie)}
+            onError={e => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
           />
         </div>
 
         <div className="moviedetail-info">
           <h1 className="moviedetail-title">{getMovieName(movie)}</h1>
-          {movie.nameEn && movie.nameRu && (
-            <p className="moviedetail-subtitle">{movie.nameEn}</p>
+          {movie.nameOriginal && movie.nameOriginal !== movie.nameRu && (
+            <p className="moviedetail-subtitle">{movie.nameOriginal}</p>
           )}
 
           <div className="moviedetail-meta">
-            {movie.year && movie.year !== 0 ? <span>{movie.year}</span> : null}
-            {movie.filmLength && movie.filmLength !== 0 ? <span>{movie.filmLength} мин</span> : null}
-            {movie.ratingKinopoisk && movie.ratingKinopoisk !== 0 ? (
-              <span className="moviedetail-rating">
-                ★ {movie.ratingKinopoisk}
-              </span>
+            {movie.year ? <span>{movie.year}</span> : null}
+            {movie.filmLength ? <span>{movie.filmLength} мин</span> : null}
+            {movie.ratingKinopoisk ? (
+              <span className="moviedetail-rating">★ {movie.ratingKinopoisk}</span>
             ) : null}
           </div>
 
           <div className="moviedetail-statuses">
             {(() => {
-              const isSeries = movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES'
-
-              // Отмеченные пользователем серии
-              const hasWatchedEpisodes =
-                isSeries &&
-                Object.keys(watchedEpisodes).filter((k) => watchedEpisodes[k]).length > 0
-
-              // Все вышедшие серии просмотрены?
-              let allAiredWatched = false
-              if (isSeries && episodes.length > 0) {
-                const airedEpisodes = episodes.filter((e) =>
+              const watchedCount = Object.keys(watchedEpisodes)
+                .filter(k => watchedEpisodes[k]).length
+              const allAiredWatched = (() => {
+                if (!isSeries || episodes.length === 0) return false
+                const aired = episodes.filter(e =>
                   e.release_date ? new Date(e.release_date) <= new Date() : false
                 )
-                allAiredWatched =
-                  airedEpisodes.length > 0 &&
-                  airedEpisodes.every(
-                    (e) => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
-                  )
-              }
+                return aired.length > 0 &&
+                  aired.every(e => watchedEpisodes[`${e.season_number}-${e.episode_number}`])
+              })()
 
-              return STATUSES.map((s) => {
-                // Скрываем кнопку "Посмотрел" для сериалов
+              return STATUSES.map(s => {
                 if (isSeries && s.value === 'watched') return null
-
-                // Блокируем "Не смотрел" — если есть отмеченные серии
-                const isNotWatchedDisabled = s.value === 'not_watched' && hasWatchedEpisodes
-
-                // Блокируем "Буду смотреть" — если всё вышедшее уже просмотрено
-                const isWantToWatchDisabled = s.value === 'want_to_watch' && allAiredWatched
-
-                const isDisabled = isNotWatchedDisabled || isWantToWatchDisabled
-
-                let disabledHint = ''
-                if (isNotWatchedDisabled) {
-                  disabledHint =
-                    'Нельзя поставить статус «Не смотрел», пока отмечены просмотренные серии. Сначала снимите все отметки с серий.'
-                } else if (isWantToWatchDisabled) {
-                  disabledHint =
-                    'Нельзя поставить статус «Буду смотреть» — все вышедшие серии уже просмотрены.'
-                }
-
+                const disNot = s.value === 'not_watched' && watchedCount > 0
+                const disWant = s.value === 'want_to_watch' && allAiredWatched
+                const dis = disNot || disWant
+                let hint = ''
+                if (disNot) hint = 'Сначала снимите отметки с серий'
+                else if (disWant) hint = 'Все серии уже просмотрены'
                 return (
                   <button
                     key={s.value}
-                    className={
-                      status === s.value
-                        ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
-                        : 'moviedetail-statusbtn'
-                    }
-                    onClick={() => {
-                      if (isDisabled) {
-                        showError(disabledHint)
-                        return
-                      }
-                      handleStatusChange(s.value)
-                    }}
-                    style={
-                      isDisabled
-                        ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'auto' }
-                        : {}
-                    }
-                    title={isDisabled ? disabledHint : ''}
+                    className={status === s.value
+                      ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
+                      : 'moviedetail-statusbtn'}
+                    onClick={() => { if (dis) { showError(hint); return } handleStatusChange(s.value) }}
+                    style={dis ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+                    title={dis ? hint : ''}
                   >
                     {s.label}
                   </button>
@@ -453,24 +339,19 @@ export default function ElysiumMovieDetail() {
               })
             })()}
 
-            {/* Для сериалов кнопка "Смотрю" */}
-            {movie.type === 'TV_SERIES' || movie.type === 'MINI_SERIES' ? (
+            {isSeries && (
               <button
-                className={
-                  status === 'watching' || status === 'watched'
-                    ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
-                    : 'moviedetail-statusbtn'
-                }
+                className={status === 'watching' || status === 'watched'
+                  ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
+                  : 'moviedetail-statusbtn'}
                 onClick={() => handleStatusChange('watching')}
               >
                 {status === 'watched' ? 'Посмотрел' : 'Смотрю'}
               </button>
-            ) : null}
+            )}
           </div>
 
-          <p className="moviedetail-description">
-            {movie.description || 'Описание отсутствует.'}
-          </p>
+          <p className="moviedetail-description">{movie.description || 'Описание отсутствует.'}</p>
         </div>
       </div>
 
@@ -487,21 +368,11 @@ export default function ElysiumMovieDetail() {
           </div>
           <div className="moviedetail-item">
             <span className="moviedetail-label">Длительность</span>
-            <span className="moviedetail-value">
-              {movie.filmLength && movie.filmLength !== 0 ? <span>{movie.filmLength} мин</span> : "—"}
-            </span>
+            <span className="moviedetail-value">{movie.filmLength ? `${movie.filmLength} мин` : '—'}</span>
           </div>
           <div className="moviedetail-item">
-            <span className="moviedetail-label">Рейтинг Кинопоиск</span>
-            <span className="moviedetail-value">
-              {movie.ratingKinopoisk && movie.ratingKinopoisk !== 0 ? movie.ratingKinopoisk : '—'}
-            </span>
-          </div>
-          <div className="moviedetail-item">
-            <span className="moviedetail-label">Рейтинг IMDb</span>
-            <span className="moviedetail-value">
-              {movie.ratingImdb && movie.ratingImdb !== 0 ? movie.ratingImdb : '—'}
-            </span>
+            <span className="moviedetail-label">Рейтинг</span>
+            <span className="moviedetail-value">{movie.ratingKinopoisk || '—'}</span>
           </div>
           <div className="moviedetail-item">
             <span className="moviedetail-label">Слоган</span>
@@ -510,83 +381,62 @@ export default function ElysiumMovieDetail() {
         </div>
       </div>
 
-      {episodes.length > 0 && (
+      {isSeries && episodes.length > 0 && (
         <div className="moviedetail-seasons">
           <h2 className="moviedetail-heading">Сезоны</h2>
-          {Array.from(new Set(episodes.map((e) => e.season_number))).map((seasonNum) => {
+          {Array.from(new Set(episodes.map(e => e.season_number))).map(seasonNum => {
             const isExpanded = expandedSeasons[seasonNum]
-            const seasonEpisodes = episodes.filter((e) => e.season_number === seasonNum)
-            const watchedCount = seasonEpisodes.filter(
-              (e) => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
-            ).length
-
+            const seasonEps = episodes.filter(e => e.season_number === seasonNum)
+            const wc = seasonEps.filter(e => watchedEpisodes[`${e.season_number}-${e.episode_number}`]).length
             return (
               <div key={seasonNum} className="season-block">
                 <div className="season-header" onClick={() => toggleSeason(seasonNum)}>
                   <h3 className="season-title">
                     Сезон {seasonNum}
-                    <span className="season-progress">
-                      ({watchedCount} / {seasonEpisodes.length})
-                    </span>
+                    <span className="season-progress">({wc} / {seasonEps.length})</span>
                   </h3>
-
-                  {/* НОВАЯ КНОПКА */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {(() => {
-                      // Считаем, есть ли непросмотренные вышедшие серии
-                      const airedEpisodes = seasonEpisodes.filter(e =>
+                      const aired = seasonEps.filter(e =>
                         e.release_date ? new Date(e.release_date) <= new Date() : false
                       )
-                      const allAiredWatched = airedEpisodes.length > 0 && airedEpisodes.every(
-                        e => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
+                      const allW = aired.length > 0 && aired.every(e =>
+                        watchedEpisodes[`${e.season_number}-${e.episode_number}`]
                       )
-
-                      if (airedEpisodes.length === 0 || allAiredWatched) return null
-
+                      if (aired.length === 0 || allW) return null
                       return (
                         <button
                           type="button"
                           className="season-bulk-btn"
                           onClick={(e) => {
-                            e.stopPropagation() // Чтобы не срабатывало сворачивание сезона
+                            e.stopPropagation()
                             handleBulkToggleSeason(seasonNum, 'watch')
                           }}
-                          title="Отметить все вышедшие серии просмотренными"
                         >
-                          <Check size={14} />
-                          Отметить сезон
+                          <Check size={14} /> Отметить сезон
                         </button>
                       )
                     })()}
-
-                    <span className="season-toggle-icon">
-                      {isExpanded ? '▲' : '▼'}
-                    </span>
+                    <span className="season-toggle-icon">{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </div>
-
                 {isExpanded && (
                   <div className="episodes-list">
-                    {seasonEpisodes.map((ep) => {
+                    {seasonEps.map(ep => {
                       const key = `${ep.season_number}-${ep.episode_number}`
-                      const isWatched = watchedEpisodes[key]
+                      const isW = watchedEpisodes[key]
                       const isAired = ep.release_date ? new Date(ep.release_date) <= new Date() : false
-
                       return (
                         <div
                           key={key}
-                          className={`episode-item ${isWatched ? 'watched' : ''} ${!isAired ? 'not-aired' : ''}`}
+                          className={`episode-item ${isW ? 'watched' : ''} ${!isAired ? 'not-aired' : ''}`}
                           onClick={() => isAired && handleToggleEpisode(ep.season_number, ep.episode_number)}
                         >
-                          <div className="episode-checkbox">
-                            {isWatched && <Check size={16} />}
-                          </div>
+                          <div className="episode-checkbox">{isW && <Check size={16} />}</div>
                           <div className="episode-info">
-                            {/* НАЗВАНИЕ СЕРИИ ТЕПЕРЬ ГЛАВНОЕ */}
                             <span className="episode-name-main">
                               {ep.name_ru || `Серия ${ep.episode_number}`}
                             </span>
-                            {/* НОМЕР И ДАТА ВТОРИЧНЫ */}
                             <span className="episode-subtitle">
                               Серия {ep.episode_number}
                               {ep.release_date && ` · ${new Date(ep.release_date).toLocaleDateString('ru-RU')}`}
@@ -604,33 +454,11 @@ export default function ElysiumMovieDetail() {
         </div>
       )}
 
-      {facts.length > 0 && (
-        <div className="moviedetail-facts">
-          <h2 className="moviedetail-heading">Факты</h2>
-          <ul className="moviedetail-facts-list">
-            {visibleFacts.map((fact, index) => (
-              <li key={index} className="moviedetail-fact">
-                {stripHtml(fact.text)}
-              </li>
-            ))}
-          </ul>
-
-          {facts.length > 3 && (
-            <button
-              className="moviedetail-toggle"
-              onClick={() => setFactsExpanded((prev) => !prev)}
-            >
-              {factsExpanded ? 'Свернуть' : `Показать все (${facts.length})`}
-            </button>
-          )}
-        </div>
-      )}
-
       {relations.length > 0 && (
         <div className="moviedetail-similars">
-          <h2 className="moviedetail-heading">Связанные фильмы</h2>
+          <h2 className="moviedetail-heading">Связанные</h2>
           <div className="moviedetail-moviesscroll">
-            {relations.map((item) => renderMovieCard(item, 'kinopoiskId'))}
+            {relations.map(renderCard)}
           </div>
         </div>
       )}
@@ -639,14 +467,12 @@ export default function ElysiumMovieDetail() {
         <div className="moviedetail-similars">
           <h2 className="moviedetail-heading">Похожие</h2>
           <div className="moviedetail-moviesscroll">
-            {similars.map((item) => renderMovieCard(item, 'filmId'))}
+            {similars.map(renderCard)}
           </div>
         </div>
       )}
 
-      <Link to="/elysium" className="moviedetail-back">
-        ← Назад
-      </Link>
+      <Link to="/elysium" className="moviedetail-back">← Назад</Link>
     </div>
   )
 }

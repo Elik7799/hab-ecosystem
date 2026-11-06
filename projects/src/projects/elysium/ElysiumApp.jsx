@@ -22,19 +22,18 @@ function ElysiumApp() {
       <ElysiumHeader />
       <main className="app-main">
         <Routes>
-          
           <Route path="login" element={<ElysiumLogin />} />
           <Route path="register" element={<ElysiumRegister />} />
-          <Route index element={<ElysiumProtectedRoute><ElysiumMain /></ElysiumProtectedRoute>}/>
-          <Route path="movie/:id" element={<ElysiumProtectedRoute><ElysiumMovieDetail /></ElysiumProtectedRoute>}/>
-          <Route path="friends" element={<ElysiumProtectedRoute><ElysiumFriends /></ElysiumProtectedRoute>}/>
-          <Route path="match" element={<ElysiumProtectedRoute><ElysiumMatch /></ElysiumProtectedRoute>}/>
-          <Route path="profile" element={<ElysiumProtectedRoute><ElysiumProfile /></ElysiumProtectedRoute>}/>
-          <Route path="profile/:id" element={<ElysiumProtectedRoute><ElysiumProfile /></ElysiumProtectedRoute>}/>
+          <Route index element={<ElysiumProtectedRoute><ElysiumMain /></ElysiumProtectedRoute>} />
+          <Route path="movie/:id" element={<ElysiumProtectedRoute><ElysiumMovieDetail dbType="FILM" /></ElysiumProtectedRoute>} />
+          <Route path="serial/:id" element={<ElysiumProtectedRoute><ElysiumMovieDetail dbType="TV_SERIES" /></ElysiumProtectedRoute>} />
+          <Route path="friends" element={<ElysiumProtectedRoute><ElysiumFriends /></ElysiumProtectedRoute>} />
+          <Route path="match" element={<ElysiumProtectedRoute><ElysiumMatch /></ElysiumProtectedRoute>} />
+          <Route path="profile" element={<ElysiumProtectedRoute><ElysiumProfile /></ElysiumProtectedRoute>} />
+          <Route path="profile/:id" element={<ElysiumProtectedRoute><ElysiumProfile /></ElysiumProtectedRoute>} />
           <Route path="my-series" element={<ElysiumProtectedRoute><ElysiumMySeries /></ElysiumProtectedRoute>} />
           <Route path="import" element={<ElysiumProtectedRoute><ElysiumImport /></ElysiumProtectedRoute>} />
           <Route path="my-movies" element={<ElysiumProtectedRoute><ElysiumMyMovies /></ElysiumProtectedRoute>} />
-
         </Routes>
       </main>
       <ElysiumFooter />
