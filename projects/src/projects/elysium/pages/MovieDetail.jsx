@@ -306,18 +306,22 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
             {(() => {
               const watchedCount = Object.keys(watchedEpisodes)
                 .filter(k => watchedEpisodes[k]).length
-              const allAiredWatched = (() => {
-                if (!isSeries || episodes.length === 0) return false
-                const aired = episodes.filter(e =>
-                  e.release_date ? new Date(e.release_date) <= new Date() : false
-                )
-                return aired.length > 0 &&
-                  aired.every(e => watchedEpisodes[`${e.season_number}-${e.episode_number}`])
-              })()
+              const airedEpisodes = isSeries ? episodes.filter(e =>
+                e.release_date ? new Date(e.release_date) <= new Date() : false
+              ) : []
+              const airedCount = airedEpisodes.length
+              const allAiredWatched = isSeries && airedCount > 0 && airedEpisodes.every(
+                e => watchedEpisodes[`${e.season_number}-${e.episode_number}`]
+              )
+              const hasSomeWatched = isSeries && watchedCount > 0
+              const hasUnwatched = isSeries && airedCount > 0 && watchedCount < airedCount
+              // Кнопка «Перестал смотреть»:
+              // показываем если есть хотя бы одна отмеченная серия и не все просмотрены
+              const showDropped = hasSomeWatched && hasUnwatched
 
               return STATUSES.map(s => {
                 if (isSeries && s.value === 'watched') return null
-                const disNot = s.value === 'not_watched' && watchedCount > 0
+                const disNot = s.value === 'not_watched' && hasSomeWatched
                 const disWant = s.value === 'want_to_watch' && allAiredWatched
                 const dis = disNot || disWant
                 let hint = ''
@@ -336,19 +340,32 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
                     {s.label}
                   </button>
                 )
-              })
+              }).concat(
+                isSeries ? [
+                  <button
+                    key="watching"
+                    className={status === 'watching'
+                      ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
+                      : 'moviedetail-statusbtn'}
+                    onClick={() => handleStatusChange('watching')}
+                  >
+                    Смотрю
+                  </button>,
+                  showDropped || status === 'dropped' ? (
+                    <button
+                      key="dropped"
+                      className={status === 'dropped'
+                        ? 'moviedetail-statusbtn moviedetail-statusbtnactive status-dropped-btn'
+                        : 'moviedetail-statusbtn status-dropped-btn'}
+                      onClick={() => handleStatusChange('dropped')}
+                      title="Убрать из «Смотрю» и сохранить прогресс"
+                    >
+                      Перестал смотреть
+                    </button>
+                  ) : null,
+                ].filter(Boolean) : []
+              )
             })()}
-
-            {isSeries && (
-              <button
-                className={status === 'watching' || status === 'watched'
-                  ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
-                  : 'moviedetail-statusbtn'}
-                onClick={() => handleStatusChange('watching')}
-              >
-                {status === 'watched' ? 'Посмотрел' : 'Смотрю'}
-              </button>
-            )}
           </div>
 
           <p className="moviedetail-description">{movie.description || 'Описание отсутствует.'}</p>

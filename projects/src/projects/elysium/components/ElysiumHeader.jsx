@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv, Film } from 'lucide-react'
+import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv, Film, PauseCircle } from 'lucide-react'
 import { useAuth } from '../context/ElysiumAuthContext'
 import ElysiumNotificationsBell from './ElysiumNotificationsBell'
 import { useTheme } from '../../../context/ThemeContext'
@@ -72,6 +72,10 @@ export default function ElysiumHeader() {
 
             <NavLink to="/elysium/my-movies" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
               <Film />
+            </NavLink>
+
+            <NavLink to="/elysium/dropped-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'} title="Перестал смотреть">
+              <PauseCircle />
             </NavLink>
 
             <NavLink
@@ -170,6 +174,17 @@ export default function ElysiumHeader() {
               }>
                 <Film size={20} />
                 <span>Мои фильмы</span>
+              </NavLink>
+
+              <NavLink
+                to="/elysium/dropped-series"
+                className={({ isActive }) =>
+                  isActive ? 'header-mobile-item header-mobile-item-active' : 'header-mobile-item'
+                }
+                onClick={() => setMenuOpen(false)}
+              >
+                <PauseCircle size={20} />
+                <span>Перестал смотреть</span>
               </NavLink>
 
               <NavLink

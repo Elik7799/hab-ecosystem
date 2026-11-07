@@ -12,12 +12,14 @@ const STATUS_FILTERS = [
   { value: 'watching', label: 'Смотрю' },
   { value: 'watched', label: 'Посмотрел' },
   { value: 'want_to_watch', label: 'Буду смотреть' },
+  { value: 'dropped', label: 'Перестал смотреть' },
 ]
 
 const STATUS_LABELS = {
   watching: 'Смотрю',
   watched: 'Посмотрел',
   want_to_watch: 'Буду смотреть',
+  dropped: 'Перестал смотреть',
 }
 
 export default function ElysiumProfile() {

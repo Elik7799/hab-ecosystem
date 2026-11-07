@@ -168,7 +168,7 @@ async function upsertTmdbMovie(tmdbId, type) {
       imdb_id = COALESCE(EXCLUDED.imdb_id, movies.imdb_id),
       last_checked_at = NOW()
   `, [tmdbId, type, nameRu, nameOriginal, year, posterUrl, posterPreview,
-      rating, description, filmLength, slogan, imdbId])
+    rating, description, filmLength, slogan, imdbId])
 
   // Жанры
   await pool.query('DELETE FROM movie_genres WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
@@ -217,7 +217,7 @@ async function syncTmdbSeasons(tmdbId, seasons) {
             air_date = EXCLUDED.air_date,
             overview = EXCLUDED.overview`,
           [tmdbId, ep.season_number, ep.episode_number, ep.name || null,
-           ep.air_date || null, ep.overview || null, ep.id])
+            ep.air_date || null, ep.overview || null, ep.id])
       }
     } catch (err) {
       console.error(`Season ${season.season_number} for ${tmdbId}:`, err.message)
@@ -516,20 +516,40 @@ app.get('/api/kinopoisk/search', authMiddleware, async (req, res) => {
     const data = await tmdbFetch(
       `${TMDB_BASE}/search/multi?query=${encodeURIComponent(keyword)}&language=ru-RU&include_adult=false`
     )
-    const films = (data.results || [])
+
+    const results = (data.results || [])
       .filter(i => i.media_type === 'movie' || i.media_type === 'tv')
-      .map(item => {
-        const isTV = item.media_type === 'tv'
-        return {
-          kinopoiskId: item.id,
-          tmdbId: item.id,
-          nameRu: item.title || item.name || '—',
-          nameOriginal: item.original_title || item.original_name || '—',
-          year: parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0,
-          type: isTV ? 'TV_SERIES' : 'FILM',
-          posterUrlPreview: item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null,
-        }
-      })
+
+    // Собираем refs для батч-запроса статусов
+    const refs = results.map(i => ({
+      id: i.id,
+      type: i.media_type === 'tv' ? 'TV_SERIES' : 'FILM',
+    }))
+    const statusMap = {}
+    if (refs.length > 0) {
+      const ids = refs.map(r => r.id)
+      const sr = await pool.query(
+        `SELECT movie_id, movie_type, status FROM user_movies
+         WHERE user_id = $1 AND movie_id = ANY($2)`,
+        [req.user.id, ids]
+      )
+      sr.rows.forEach(r => { statusMap[`${r.movie_id}:${r.movie_type}`] = r.status })
+    }
+
+    const films = results.map(item => {
+      const isTV = item.media_type === 'tv'
+      const type = isTV ? 'TV_SERIES' : 'FILM'
+      return {
+        kinopoiskId: item.id,
+        tmdbId: item.id,
+        nameRu: item.title || item.name || '—',
+        nameOriginal: item.original_title || item.original_name || '—',
+        year: parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0,
+        type,
+        posterUrlPreview: item.poster_path ? `${IMAGE_BASE}w200${item.poster_path}` : null,
+        status: statusMap[`${item.id}:${type}`] || 'not_watched',
+      }
+    })
     res.json({ films })
   } catch (err) {
     console.error(err)
@@ -693,6 +713,23 @@ async function recalcStatus(tmdbId, userId) {
     [userId, tmdbId]
   )
 
+  // Если пользователь в статусе 'dropped' — не трогаем. Он сам решит,
+  // когда возобновить (через /movies/tv/:id со status='watching').
+  const current = await pool.query(
+    `SELECT status FROM user_movies
+     WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
+    [userId, tmdbId]
+  )
+  if (current.rows[0]?.status === 'dropped') {
+    // Обновим только last_watched_at, чтобы сортировка «по последнему» работала
+    await pool.query(
+      `UPDATE user_movies SET last_watched_at = NOW()
+       WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
+      [userId, tmdbId]
+    )
+    return 'dropped'
+  }
+
   let newStatus = 'watching'
   if (aired.length > 0 && watched.rows.length >= aired.length) {
     newStatus = 'watched'
@@ -705,9 +742,11 @@ async function recalcStatus(tmdbId, userId) {
   }
 
   await pool.query(`
-    INSERT INTO user_movies (user_id, movie_id, movie_type, status)
-    VALUES ($1, $2, 'TV_SERIES', $3)
-    ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET status = EXCLUDED.status
+    INSERT INTO user_movies (user_id, movie_id, movie_type, status, last_watched_at)
+    VALUES ($1, $2, 'TV_SERIES', $3, NOW())
+    ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET
+      status = EXCLUDED.status,
+      last_watched_at = NOW()
   `, [userId, tmdbId, newStatus])
   return newStatus
 }
@@ -832,12 +871,14 @@ async function setStatus(req, res, dbType) {
     }
   }
 
-  const allowed = ['want_to_watch', 'watched', 'watching']
+  const allowed = ['want_to_watch', 'watched', 'watching', 'dropped']
   if (!allowed.includes(status)) return res.status(400).json({ error: 'Неверный статус' })
 
-  if (dbType === 'FILM' && status === 'watching') {
-    return res.status(400).json({ error: 'Фильмы не могут быть в статусе «Смотрю»' })
+  // Фильмам запрещены watching и dropped
+  if (dbType === 'FILM' && (status === 'watching' || status === 'dropped')) {
+    return res.status(400).json({ error: 'Этот статус только для сериалов' })
   }
+  // Сериалам запрещён watched напрямую
   if (dbType === 'TV_SERIES' && status === 'watched') {
     return res.status(400).json({ error: 'Сериалы нельзя отметить напрямую' })
   }
@@ -850,10 +891,19 @@ async function setStatus(req, res, dbType) {
     if (exists.rows.length === 0) {
       await upsertTmdbMovie(tmdbId, dbType)
     }
+
+    // last_watched_at: ставим при watching, сохраняем при dropped,
+    // сбрасываем при want_to_watch
     const r = await pool.query(`
-      INSERT INTO user_movies (user_id, movie_id, movie_type, status)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET status = EXCLUDED.status
+      INSERT INTO user_movies (user_id, movie_id, movie_type, status, last_watched_at)
+      VALUES ($1, $2, $3, $4,
+        CASE WHEN $4 IN ('watching','dropped') THEN NOW() ELSE NULL END)
+      ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET
+        status = EXCLUDED.status,
+        last_watched_at = CASE
+          WHEN EXCLUDED.status IN ('watching','dropped') THEN COALESCE(user_movies.last_watched_at, NOW())
+          ELSE NULL
+        END
       RETURNING *
     `, [userId, tmdbId, dbType, status])
     res.json(r.rows[0])
@@ -998,14 +1048,15 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
   const userId = req.user.id
   try {
     const movies = await pool.query(`
-      SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
-        m.name_ru AS "nameRu", m.name_original AS "nameOriginal",
-        m.poster_url_preview AS "posterUrlPreview", m.year
-      FROM user_movies um
-      JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
-      WHERE um.user_id = $1 AND um.status = 'watching'
-      ORDER BY um.id DESC
-    `, [userId])
+     SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+     m.name_ru AS "nameRu", m.name_original AS "nameOriginal",
+     m.poster_url_preview AS "posterUrlPreview", m.year,
+     um.last_watched_at AS "lastWatchedAt"
+     FROM user_movies um
+     JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+     WHERE um.user_id = $1 AND um.status = 'watching'
+     ORDER BY um.id DESC
+`, [userId])
 
     const series = []
     for (const movie of movies.rows) {
@@ -1079,6 +1130,45 @@ app.get('/api/users/me/watchlist-series', authMiddleware, async (req, res) => {
   }
 })
 
+app.get('/api/users/me/dropped', authMiddleware, async (req, res) => {
+  const userId = req.user.id
+  try {
+    const r = await pool.query(`
+      SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+        m.name_ru AS "nameRu", m.name_original AS "nameOriginal", m.year,
+        m.poster_url_preview AS "posterUrlPreview",
+        m.rating_imdb AS "ratingKinopoisk", m.rating_imdb AS "ratingImdb",
+        m.film_length AS "filmLength",
+        um.last_watched_at AS "lastWatchedAt"
+      FROM user_movies um
+      JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+      WHERE um.user_id = $1 AND um.status = 'dropped' AND m.type = 'TV_SERIES'
+      ORDER BY um.last_watched_at DESC NULLS LAST, um.id DESC
+    `, [userId])
+
+    const series = []
+    for (const row of r.rows) {
+      const episodes = await getEpisodesFromDb(row.tmdbId, 'TV_SERIES')
+      const aired = episodes.filter(e =>
+        e.release_date ? new Date(e.release_date) <= new Date() : false
+      )
+      const wc = await pool.query(`
+        SELECT COUNT(*) FROM user_episodes
+        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+      `, [userId, row.tmdbId])
+      const watchedCount = parseInt(wc.rows[0].count)
+      const remaining = watchedCount > 0
+        ? Math.max(0, aired.length - watchedCount)
+        : aired.length
+      series.push({ ...row, episodesCount: aired.length, watchedCount, remaining })
+    }
+    res.json({ series })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка' })
+  }
+})
+
 app.get('/api/users/me/watchlist', authMiddleware, async (req, res) => {
   try {
     const r = await pool.query(`
@@ -1111,10 +1201,12 @@ app.get('/api/users/:id', authMiddleware, async (req, res) => {
     const user = u.rows[0]
 
     const cnt = await pool.query(`
-      SELECT COUNT(*) FILTER (WHERE status = 'watched') AS watched,
-             COUNT(*) FILTER (WHERE status = 'want_to_watch') AS want_to_watch
-      FROM user_movies WHERE user_id = $1
-    `, [id])
+     SELECT
+       COUNT(*) FILTER (WHERE status = 'watched')        AS watched,
+       COUNT(*) FILTER (WHERE status = 'want_to_watch')  AS want_to_watch,
+       COUNT(*) FILTER (WHERE status = 'dropped')        AS dropped
+     FROM user_movies WHERE user_id = $1
+`, [id])
     const fr = await pool.query(
       `SELECT COUNT(*) FROM friendships
        WHERE (user_id_1 = $1 OR user_id_2 = $1) AND status = 'accepted'`, [id]
@@ -1146,6 +1238,7 @@ app.get('/api/users/:id', authMiddleware, async (req, res) => {
       stats: {
         watched: parseInt(cnt.rows[0].watched),
         want_to_watch: parseInt(cnt.rows[0].want_to_watch),
+        dropped: parseInt(cnt.rows[0].dropped),
         not_watched: 0,
         friends: parseInt(fr.rows[0].count),
       },
