@@ -866,7 +866,8 @@ async function setStatus(req, res, dbType) {
         [userId, tmdbId, dbType]
       )
       return res.json({ status: 'not_watched' })
-    } catch {
+    } catch (err) {
+      console.error('setStatus(not_watched):', err.message)
       return res.status(500).json({ error: 'Ошибка' })
     }
   }
@@ -874,11 +875,9 @@ async function setStatus(req, res, dbType) {
   const allowed = ['want_to_watch', 'watched', 'watching', 'dropped']
   if (!allowed.includes(status)) return res.status(400).json({ error: 'Неверный статус' })
 
-  // Фильмам запрещены watching и dropped
   if (dbType === 'FILM' && (status === 'watching' || status === 'dropped')) {
     return res.status(400).json({ error: 'Этот статус только для сериалов' })
   }
-  // Сериалам запрещён watched напрямую
   if (dbType === 'TV_SERIES' && status === 'watched') {
     return res.status(400).json({ error: 'Сериалы нельзя отметить напрямую' })
   }
@@ -892,24 +891,27 @@ async function setStatus(req, res, dbType) {
       await upsertTmdbMovie(tmdbId, dbType)
     }
 
-    // last_watched_at: ставим при watching, сохраняем при dropped,
-    // сбрасываем при want_to_watch
+    // ВАЖНО: везде $4::varchar(20), чтобы PG не спорил о типе.
     const r = await pool.query(`
       INSERT INTO user_movies (user_id, movie_id, movie_type, status, last_watched_at)
-      VALUES ($1, $2, $3, $4,
-        CASE WHEN $4 IN ('watching','dropped') THEN NOW() ELSE NULL END)
+      VALUES (
+        $1, $2, $3::varchar(20),
+        $4::varchar(20),
+        CASE WHEN $4::varchar(20) IN ('watching', 'dropped') THEN NOW() ELSE NULL END
+      )
       ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET
         status = EXCLUDED.status,
         last_watched_at = CASE
-          WHEN EXCLUDED.status IN ('watching','dropped') THEN COALESCE(user_movies.last_watched_at, NOW())
+          WHEN EXCLUDED.status IN ('watching', 'dropped')
+            THEN COALESCE(user_movies.last_watched_at, NOW())
           ELSE NULL
         END
       RETURNING *
     `, [userId, tmdbId, dbType, status])
     res.json(r.rows[0])
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Ошибка сохранения' })
+    console.error('setStatus:', err.message)
+    res.status(500).json({ error: 'Ошибка сохранения', detail: err.message })
   }
 }
 
