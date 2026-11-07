@@ -105,7 +105,7 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
           })
             .then(r => (r.ok ? r.json() : { statuses: {} }))
             .then(d => setRelatedStatuses(d.statuses || {}))
-            .catch(() => {})
+            .catch(() => { })
         }
       })
       .catch(err => {
@@ -163,13 +163,18 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
         setStatus(prev)
         const d = await res.json()
         showError(d.error || 'Не удалось сохранить')
+        return
+      }
+      // Сервер мог вернуть другой статус (например, watching → watched при автопереоценке)
+      const data = await res.json()
+      if (data?.status && data.status !== newStatus) {
+        setStatus(data.status)
       }
     } catch {
       setStatus(prev)
       showError('Не удалось сохранить')
     }
   }
-
   const handleToggleEpisode = async (seasonNumber, episodeNumber) => {
     const key = `${seasonNumber}-${episodeNumber}`
     const isWatched = watchedEpisodes[key]
@@ -315,9 +320,8 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
               )
               const hasSomeWatched = isSeries && watchedCount > 0
               const hasUnwatched = isSeries && airedCount > 0 && watchedCount < airedCount
-              // Кнопка «Перестал смотреть»:
-              // показываем если есть хотя бы одна отмеченная серия и не все просмотрены
               const showDropped = hasSomeWatched && hasUnwatched
+              const isWatchedFinal = isSeries && status === 'watched'
 
               return STATUSES.map(s => {
                 if (isSeries && s.value === 'watched') return null
@@ -342,15 +346,33 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
                 )
               }).concat(
                 isSeries ? [
-                  <button
-                    key="watching"
-                    className={status === 'watching'
-                      ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
-                      : 'moviedetail-statusbtn'}
-                    onClick={() => handleStatusChange('watching')}
-                  >
-                    Смотрю
-                  </button>,
+                  (() => {
+                    // Когда сериал уже в watched — кнопку «Смотрю» не показываем:
+                    // всё просмотрено, нечего продолжать. Как только выйдут новые серии,
+                    // getStatus при заходе переведёт обратно в watching, и кнопка вернётся.
+                    if (isWatchedFinal) return null
+
+                    const disWatching = allAiredWatched
+                    const hintWatching = disWatching
+                      ? 'Все вышедшие серии просмотрены'
+                      : ''
+                    return (
+                      <button
+                        key="watching"
+                        className={status === 'watching'
+                          ? 'moviedetail-statusbtn moviedetail-statusbtnactive'
+                          : 'moviedetail-statusbtn'}
+                        onClick={() => {
+                          if (disWatching) { showError(hintWatching); return }
+                          handleStatusChange('watching')
+                        }}
+                        style={disWatching ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+                        title={hintWatching}
+                      >
+                        Смотрю
+                      </button>
+                    )
+                  })(),
                   showDropped || status === 'dropped' ? (
                     <button
                       key="dropped"
