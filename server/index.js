@@ -22,6 +22,17 @@ const TMDB_TOKEN = process.env.TMDB_ACCESS_TOKEN
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/'
 
+// ─── Graceful shutdown ───
+let isShuttingDown = false
+process.on('SIGTERM', () => {
+  console.log('SIGTERM: завершаю фоновые задачи...')
+  isShuttingDown = true
+})
+process.on('SIGINT', () => {
+  console.log('SIGINT: завершаю фоновые задачи...')
+  isShuttingDown = true
+})
+
 // ═════════════════════════ SOCKET.IO ═════════════════════════
 
 const httpServer = http.createServer(app)
@@ -103,6 +114,10 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// ─── Healthcheck для Render ───
+app.get('/health', (req, res) => res.status(200).json({ ok: true }))
+app.get('/', (req, res) => res.status(200).json({ name: 'hab-ecosystem', ok: true }))
+
 // ═════════════════════════ TMDB HELPERS ═════════════════════════
 
 async function tmdbFetch(url, retries = 2) {
@@ -137,8 +152,6 @@ async function upsertTmdbMovie(tmdbId, type) {
     `${TMDB_BASE}/${endpoint}/${tmdbId}?language=ru-RU&append_to_response=external_ids`
   )
 
-  // Русское название — то, что TMDB отдал с language=ru-RU.
-  // Если русского перевода нет, TMDB вернёт original_title — это ок.
   const nameRu = data.title || data.name || '—'
   const nameOriginal = data.original_title || data.original_name || '—'
   const year = parseInt((data.release_date || data.first_air_date || '').slice(0, 4)) || 0
@@ -170,7 +183,6 @@ async function upsertTmdbMovie(tmdbId, type) {
   `, [tmdbId, type, nameRu, nameOriginal, year, posterUrl, posterPreview,
     rating, description, filmLength, slogan, imdbId])
 
-  // Жанры
   await pool.query('DELETE FROM movie_genres WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
   for (const g of data.genres || []) {
     await pool.query(
@@ -180,7 +192,6 @@ async function upsertTmdbMovie(tmdbId, type) {
     )
   }
 
-  // Страны
   await pool.query('DELETE FROM movie_countries WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
   for (const c of data.production_countries || []) {
     await pool.query(
@@ -462,7 +473,6 @@ app.get('/api/kinopoisk/main', authMiddleware, async (req, res) => {
       })
     }
 
-    // Статусы — через composite (movie_id, movie_type)
     const refs = items.map(i => ({
       id: i.id,
       type: i.media_type === 'tv' ? 'TV_SERIES' : 'FILM',
@@ -520,7 +530,6 @@ app.get('/api/kinopoisk/search', authMiddleware, async (req, res) => {
     const results = (data.results || [])
       .filter(i => i.media_type === 'movie' || i.media_type === 'tv')
 
-    // Собираем refs для батч-запроса статусов
     const refs = results.map(i => ({
       id: i.id,
       type: i.media_type === 'tv' ? 'TV_SERIES' : 'FILM',
@@ -713,15 +722,13 @@ async function recalcStatus(tmdbId, userId) {
     [userId, tmdbId]
   )
 
-  // Если пользователь в статусе 'dropped' — не трогаем. Он сам решит,
-  // когда возобновить (через /movies/tv/:id со status='watching').
+  // Если пользователь в статусе 'dropped' — не трогаем.
   const current = await pool.query(
     `SELECT status FROM user_movies
      WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
     [userId, tmdbId]
   )
   if (current.rows[0]?.status === 'dropped') {
-    // Обновим только last_watched_at, чтобы сортировка «по последнему» работала
     await pool.query(
       `UPDATE user_movies SET last_watched_at = NOW()
        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
@@ -810,7 +817,6 @@ app.post('/api/episodes/bulk-toggle', authMiddleware, async (req, res) => {
 
 // ═════════════════════════ STATUS ═════════════════════════
 
-// Bulk: body { refs: [{ tmdbId, type }] }
 app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
   const { refs } = req.body
   if (!Array.isArray(refs) || refs.length === 0) return res.json({ statuses: {} })
@@ -831,7 +837,6 @@ app.post('/api/movies/bulk-statuses', authMiddleware, async (req, res) => {
   }
 })
 
-// GET /api/movies/movie/:id | GET /api/movies/tv/:id
 async function getStatus(req, res, dbType) {
   const tmdbId = parseInt(req.params.id)
   const userId = req.user.id
@@ -843,9 +848,7 @@ async function getStatus(req, res, dbType) {
     )
     let currentStatus = r.rows[0]?.status || 'not_watched'
 
-    // ── Вариант B: автопереоценка для сериалов ──
-    // Трогаем только 'watching' и 'watched'. 'dropped' — сознательный выбор
-    // пользователя, его не переопределяем. 'want_to_watch' — тоже не трогаем.
+    // Автопереоценка для сериалов: 'watching' ↔ 'watched'
     if (
       dbType === 'TV_SERIES' &&
       (currentStatus === 'watching' || currentStatus === 'watched')
@@ -867,9 +870,6 @@ async function getStatus(req, res, dbType) {
       } else if (aired.length > 0 && watchedCount > 0 && watchedCount < aired.length) {
         nextStatus = 'watching'
       }
-      // watchedCount === 0 → серии сняты, оставляем статус как есть
-      // (если был watching — recalcStatus при снятии серии сам переведёт в not_watched
-      //  или удалит; сюда такой случай не должен дойти, но подстрахуемся)
 
       if (nextStatus !== currentStatus) {
         await pool.query(
@@ -888,7 +888,6 @@ async function getStatus(req, res, dbType) {
   }
 }
 
-// POST body { status }
 async function setStatus(req, res, dbType) {
   const tmdbId = parseInt(req.params.id)
   const { status } = req.body
@@ -934,9 +933,7 @@ async function setStatus(req, res, dbType) {
       await upsertTmdbMovie(tmdbId, dbType)
     }
 
-    // ── Санити-чек для сериалов, которым ставят watching ──
-    // Если всё вышедшее уже просмотрено — сразу ставим watched,
-    // а не watching, который getStatus потом всё равно исправит.
+    // Санити-чек: если ставят 'watching', а всё просмотрено → 'watched'
     let finalStatus = status
     if (dbType === 'TV_SERIES' && status === 'watching') {
       const episodes = await getEpisodesFromDb(tmdbId, 'TV_SERIES')
@@ -983,7 +980,7 @@ app.get('/api/movies/tv/:id', authMiddleware, (req, res) => getStatus(req, res, 
 app.post('/api/movies/movie/:id', authMiddleware, (req, res) => setStatus(req, res, 'FILM'))
 app.post('/api/movies/tv/:id', authMiddleware, (req, res) => setStatus(req, res, 'TV_SERIES'))
 
-// ═════════════════════════ FRIENDS (без изменений) ═════════════════════════
+// ═════════════════════════ FRIENDS ═════════════════════════
 
 app.get('/api/users/search', authMiddleware, async (req, res) => {
   const { name } = req.query
@@ -1139,9 +1136,8 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         `${e.season_number}-${e.episode_number}`
       ))
 
-      // Всё вышедшее просмотрено?
+      // Всё вышедшее просмотрено → watched (переехал, не показываем)
       if (aired.length > 0 && watchedSet.size >= aired.length) {
-        // Из watching → watched (переехал)
         if (movie.status === 'watching') {
           await pool.query(
             `UPDATE user_movies SET status = 'watched'
@@ -1149,12 +1145,10 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
             [userId, movie.tmdbId]
           )
         }
-        // Из watched в watched — просто не показываем
         continue
       }
 
-      // Есть непросмотренные вышедшие серии
-      // Если был watched — «просыпается», возвращаем в watching
+      // Есть непросмотренные вышедшие серии, но был watched → просыпается
       if (movie.status === 'watched') {
         await pool.query(
           `UPDATE user_movies SET status = 'watching'
@@ -1295,12 +1289,12 @@ app.get('/api/users/:id', authMiddleware, async (req, res) => {
     const user = u.rows[0]
 
     const cnt = await pool.query(`
-     SELECT
-       COUNT(*) FILTER (WHERE status = 'watched')        AS watched,
-       COUNT(*) FILTER (WHERE status = 'want_to_watch')  AS want_to_watch,
-       COUNT(*) FILTER (WHERE status = 'dropped')        AS dropped
-     FROM user_movies WHERE user_id = $1
-`, [id])
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'watched')        AS watched,
+        COUNT(*) FILTER (WHERE status = 'want_to_watch')  AS want_to_watch,
+        COUNT(*) FILTER (WHERE status = 'dropped')        AS dropped
+      FROM user_movies WHERE user_id = $1
+    `, [id])
     const fr = await pool.query(
       `SELECT COUNT(*) FROM friendships
        WHERE (user_id_1 = $1 OR user_id_2 = $1) AND status = 'accepted'`, [id]
@@ -1749,11 +1743,6 @@ app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
 
 // ═════════════════════════ HYDRATE USER_MOVIES ═════════════════════════
 
-/**
- * Гарантирует, что все (movie_id, movie_type) из user_movies
- * существуют в movies. Для отсутствующих — подтягивает из TMDB.
- * Логирует каждый кейс.
- */
 async function ensureUserMoviesExist() {
   console.log('🔎 Проверка user_movies на сирот в movies...')
 
@@ -1767,6 +1756,7 @@ async function ensureUserMoviesExist() {
         AND um.movie_id IS NOT NULL
         AND um.movie_type IN ('FILM', 'TV_SERIES')
       ORDER BY um.movie_type, um.movie_id
+      LIMIT 50
     `)
 
     if (rows.length === 0) {
@@ -1780,13 +1770,15 @@ async function ensureUserMoviesExist() {
     let fail = 0
 
     for (let i = 0; i < rows.length; i++) {
+      if (isShuttingDown) {
+        console.log('⏹ ensureUserMoviesExist: SIGTERM')
+        break
+      }
       const { movie_id, movie_type } = rows[i]
       const prefix = `[${i + 1}/${rows.length}] ${movie_type}/${movie_id}`
 
       try {
         await upsertTmdbMovie(movie_id, movie_type)
-
-        // Проверяем, что действительно появился
         const check = await pool.query(
           'SELECT 1 FROM movies WHERE tmdb_id = $1 AND type = $2',
           [movie_id, movie_type]
@@ -1803,7 +1795,6 @@ async function ensureUserMoviesExist() {
         fail++
       }
 
-      // Пауза, чтобы не словить 429
       await new Promise(r => setTimeout(r, 250))
     }
 
@@ -1839,6 +1830,10 @@ async function updateOldMovies(batchSize = 41) {
     const processed = []
 
     for (let i = 0; i < total; i++) {
+      if (isShuttingDown) {
+        console.log('⏹ updateOldMovies: SIGTERM')
+        break
+      }
       const row = r.rows[i]
       const idx = `[${i + 1}/${total}]`
       const label = `${row.type}/${row.tmdb_id}`
@@ -1853,7 +1848,6 @@ async function updateOldMovies(batchSize = 41) {
         console.error(`  ❌ ${idx} ${label} — ${err.message}`)
       }
 
-      // Каждые 25 записей — сводка прогресса
       if ((i + 1) % 25 === 0) {
         const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0)
         const pct = (((i + 1) / total) * 100).toFixed(0)
@@ -1908,11 +1902,21 @@ async function checkAndUpdateOnStartup() {
   }
 }
 
-setTimeout(async () => {
-  await ensureUserMoviesExist()
-  await checkAndUpdateOnStartup()
-}, 10000)
+// ═════════════════════════ START ═════════════════════════
 
 httpServer.listen(process.env.PORT, () => {
   console.log(`Server on port ${process.env.PORT}`)
+
+  // Фоновые задачи — с задержкой, не блокируют старт и healthcheck
+  setTimeout(() => {
+    ensureUserMoviesExist().catch(err =>
+      console.error('ensureUserMoviesExist:', err)
+    )
+  }, 30000)
+
+  setTimeout(() => {
+    checkAndUpdateOnStartup().catch(err =>
+      console.error('checkAndUpdateOnStartup:', err)
+    )
+  }, 60000)
 })
