@@ -113,6 +113,48 @@
     .moviedetail-movieposter {
         width: 140px;
     }
+
+    .moviedetail-top {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .moviedetail-poster {
+        width: 200px;
+        max-width: 60vw;
+        align-self: center;
+    }
+
+    .moviedetail-info {
+        width: 100%;
+        flex: 1 1 auto;
+    }
+
+    .moviedetail-title {
+        font-size: 22px;
+        text-align: center;
+    }
+
+    .moviedetail-subtitle {
+        text-align: center;
+        margin-bottom: 12px;
+    }
+
+    .moviedetail-meta {
+        justify-content: center;
+    }
+
+    .moviedetail-statuses {
+        justify-content: center;
+    }
+
+    .moviedetail-description {
+        margin-top: 12px;
+        font-size: 14px;
+        line-height: 1.55;
+        text-align: left;
+    }
 }
 
 @media (max-width: 480px) {
@@ -123,6 +165,19 @@
 
     .moviedetail-movieposter {
         width: 130px;
+    }
+
+    .moviedetail-poster {
+        width: 160px;
+    }
+
+    .moviedetail-title {
+        font-size: 20px;
+    }
+
+    .moviedetail-statusbtn {
+        padding: 8px 12px;
+        font-size: 13px;
     }
 }
 

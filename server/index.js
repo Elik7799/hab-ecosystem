@@ -1560,38 +1560,131 @@ app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
   } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
+// ═════════════════════════ HYDRATE USER_MOVIES ═════════════════════════
+
+/**
+ * Гарантирует, что все (movie_id, movie_type) из user_movies
+ * существуют в movies. Для отсутствующих — подтягивает из TMDB.
+ * Логирует каждый кейс.
+ */
+async function ensureUserMoviesExist() {
+  console.log('🔎 Проверка user_movies на сирот в movies...')
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT um.movie_id, um.movie_type
+      FROM user_movies um
+      LEFT JOIN movies m
+        ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+      WHERE m.id IS NULL
+        AND um.movie_id IS NOT NULL
+        AND um.movie_type IN ('FILM', 'TV_SERIES')
+      ORDER BY um.movie_type, um.movie_id
+    `)
+
+    if (rows.length === 0) {
+      console.log('✅ Сирот нет — все user_movies есть в movies')
+      return
+    }
+
+    console.log(`⚠️  Найдено ${rows.length} сирот в user_movies. Восстанавливаю...`)
+
+    let ok = 0
+    let fail = 0
+
+    for (let i = 0; i < rows.length; i++) {
+      const { movie_id, movie_type } = rows[i]
+      const prefix = `[${i + 1}/${rows.length}] ${movie_type}/${movie_id}`
+
+      try {
+        await upsertTmdbMovie(movie_id, movie_type)
+
+        // Проверяем, что действительно появился
+        const check = await pool.query(
+          'SELECT 1 FROM movies WHERE tmdb_id = $1 AND type = $2',
+          [movie_id, movie_type]
+        )
+        if (check.rows.length === 0) {
+          console.log(`  ⚠️  ${prefix} — upsert прошёл, но строки в movies нет (TMDB не вернул?)`)
+          fail++
+        } else {
+          console.log(`  ✅ ${prefix} — добавлен/обновлён`)
+          ok++
+        }
+      } catch (err) {
+        console.log(`  ❌ ${prefix} — ошибка: ${err.message}`)
+        fail++
+      }
+
+      // Пауза, чтобы не словить 429
+      await new Promise(r => setTimeout(r, 250))
+    }
+
+    console.log(`🏁 Восстановление user_movies: ✅ ${ok} / ❌ ${fail}`)
+  } catch (err) {
+    console.error('ensureUserMoviesExist:', err.message)
+  }
+}
+
 // ═════════════════════════ BACKGROUND UPDATE ═════════════════════════
 
 async function updateOldMovies(batchSize = 41) {
-  console.log(`🕒 Background update, batch=${batchSize}`)
+  console.log(`🕒 Background update: batch=${batchSize}`)
+  const startedAt = Date.now()
+
   try {
     const r = await pool.query(`
       SELECT tmdb_id, type FROM movies WHERE tmdb_id > 0
       ORDER BY COALESCE(last_checked_at, created_at) ASC
       LIMIT $1
     `, [batchSize])
-    if (r.rows.length === 0) { console.log('✅ Nothing to update'); return }
 
-    let ok = 0, fail = 0
+    if (r.rows.length === 0) {
+      console.log('✅ Nothing to update')
+      return
+    }
+
+    const total = r.rows.length
+    console.log(`🕒 Обновляю ${total} записей...`)
+
+    let ok = 0
+    let fail = 0
     const processed = []
-    for (const row of r.rows) {
+
+    for (let i = 0; i < total; i++) {
+      const row = r.rows[i]
+      const idx = `[${i + 1}/${total}]`
+      const label = `${row.type}/${row.tmdb_id}`
+
       try {
         await upsertTmdbMovie(row.tmdb_id, row.type)
         processed.push(row.tmdb_id)
         ok++
+        console.log(`  ✓ ${idx} ${label}`)
       } catch (err) {
         fail++
-        console.error(`❌ ${row.type}/${row.tmdb_id}:`, err.message)
+        console.error(`  ❌ ${idx} ${label} — ${err.message}`)
       }
+
+      // Каждые 25 записей — сводка прогресса
+      if ((i + 1) % 25 === 0) {
+        const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0)
+        const pct = (((i + 1) / total) * 100).toFixed(0)
+        console.log(`  ── прогресс ${i + 1}/${total} (${pct}%), прошло ${elapsed}s, ✅${ok} ❌${fail}`)
+      }
+
       await new Promise(r => setTimeout(r, 250))
     }
+
     if (processed.length > 0) {
       await pool.query(
         'UPDATE movies SET last_checked_at_all = NOW() WHERE tmdb_id = ANY($1)',
         [processed]
       )
     }
-    console.log(`🏁 Done: ✅ ${ok} / ❌ ${fail}`)
+
+    const dur = ((Date.now() - startedAt) / 1000).toFixed(0)
+    console.log(`🏁 Done: ✅ ${ok} / ❌ ${fail} за ${dur}s`)
   } catch (err) {
     console.error('updateOldMovies:', err)
   }
@@ -1628,7 +1721,10 @@ async function checkAndUpdateOnStartup() {
   }
 }
 
-setTimeout(checkAndUpdateOnStartup, 10000)
+setTimeout(async () => {
+  await ensureUserMoviesExist()
+  await checkAndUpdateOnStartup()
+}, 10000)
 
 httpServer.listen(process.env.PORT, () => {
   console.log(`Server on port ${process.env.PORT}`)
