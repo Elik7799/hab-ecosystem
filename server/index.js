@@ -1124,7 +1124,9 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         um.last_watched_at AS "lastWatchedAt"
       FROM user_movies um
       JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
-      WHERE um.user_id = $1 AND um.status IN ('watching', 'watched')
+      WHERE um.user_id = $1
+        AND m.type = 'TV_SERIES'
+        AND um.status IN ('watching', 'watched')
       ORDER BY um.id DESC
     `, [userId])
 
@@ -1134,6 +1136,13 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
       const aired = episodes.filter(e =>
         e.release_date ? new Date(e.release_date) <= new Date() : false
       )
+
+      // Нет вышедших серий — нечего смотреть, не показываем.
+      // Статус НЕ трогаем: если пользователь поставил watching или watched — так и остаётся.
+      if (aired.length === 0) {
+        continue
+      }
+
       const watched = await pool.query(`
         SELECT season_number, episode_number FROM user_episodes
         WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
@@ -1142,9 +1151,8 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         `${e.season_number}-${e.episode_number}`
       ))
 
-      // Всё вышедшее просмотрено → не показываем в «Смотрю»
-      // и не трогаем статус (он должен быть 'watched', если ещё не)
-      if (aired.length > 0 && watchedSet.size >= aired.length) {
+      // Всё вышедшее просмотрено → watched, не показываем
+      if (watchedSet.size >= aired.length) {
         if (movie.status === 'watching') {
           await pool.query(
             `UPDATE user_movies SET status = 'watched'
@@ -1174,7 +1182,7 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
 
       series.push({
         ...movie,
-        status: 'watching', // нормализуем для фронта
+        status: 'watching',
         nextSeason: next?.season_number ?? null,
         nextEpisode: next?.episode_number ?? null,
         nextEpisodeName: next?.name_ru ?? null,

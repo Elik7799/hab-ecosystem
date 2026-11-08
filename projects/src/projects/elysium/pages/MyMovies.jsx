@@ -1,25 +1,36 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
-import { Check, ArrowDownUp, Clock, Star } from 'lucide-react'
+import { Check, ArrowDownUp, Clock, Star, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
+const PAGE_SIZE = 20
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'По названию (А-Я)' },
   { value: 'name_desc', label: 'По названию (Я-А)' },
   { value: 'year_desc', label: 'По году (новые-старые)' },
   { value: 'year_asc', label: 'По году (старые-новые)' },
+  { value: 'rating_desc', label: 'По рейтингу' },
 ]
 
 export default function ElysiumMyMovies() {
   const { token } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+
   const [movies, setMovies] = useState([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState(null)
   const [sortBy, setSortBy] = useState(() => localStorage.getItem('my-movies-sort') || 'name_asc')
+
+  // Страница берётся из location.state.page (если вернулись с карточки)
+  const [page, setPage] = useState(() => {
+    const p = location.state?.page
+    return (typeof p === 'number' && p >= 1) ? p : 1
+  })
 
   const fetchMovies = async () => {
     if (!token) return
@@ -65,6 +76,12 @@ export default function ElysiumMyMovies() {
     } finally { setUpdatingId(null) }
   }
 
+  // Смена сортировки сбрасывает страницу на 1
+  const handleSortChange = (value) => {
+    setSortBy(value)
+    setPage(1)
+  }
+
   const sorted = [...movies].sort((a, b) => {
     switch (sortBy) {
       case 'name_asc': return getMovieName(a).localeCompare(getMovieName(b), 'ru')
@@ -77,9 +94,32 @@ export default function ElysiumMyMovies() {
         const d = (a.year || 0) - (b.year || 0)
         return d || getMovieName(a).localeCompare(getMovieName(b), 'ru')
       }
+      case 'rating_desc': {
+        const d = (b.ratingKinopoisk || 0) - (a.ratingKinopoisk || 0)
+        return d || getMovieName(a).localeCompare(getMovieName(b), 'ru')
+      }
       default: return 0
     }
   })
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const pageClamped = Math.min(Math.max(1, page), totalPages)
+  const pageItems = sorted.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
+
+  // Подтягиваем page к допустимому диапазону, если фильмов стало меньше
+  useEffect(() => {
+    if (page !== pageClamped) setPage(pageClamped)
+  }, [page, pageClamped])
+
+  // Сохраняем текущую страницу в location.state,
+  // чтобы при возврате с карточки она восстановилась.
+  useEffect(() => {
+    navigate(location.pathname, {
+      replace: true,
+      state: { ...(location.state || {}), page: pageClamped },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageClamped])
 
   if (loading) return (
     <div className="my-series-body">
@@ -97,8 +137,14 @@ export default function ElysiumMyMovies() {
         </div>
         <div className="my-series-sort">
           <ArrowDownUp size={16} />
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="my-series-sort-select">
-            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <select
+            value={sortBy}
+            onChange={e => handleSortChange(e.target.value)}
+            className="my-series-sort-select"
+          >
+            {SORT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -109,49 +155,79 @@ export default function ElysiumMyMovies() {
           <Link to="/elysium" className="my-series-link">Найти фильм</Link>
         </p>
       ) : (
-        <div className="my-movies-list">
-          {sorted.map(movie => (
-            <div key={movie.kinopoiskId} className="my-movies-card">
-              <Link to={getMoviePath(movie)}>
-                <img
-                  src={movie.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
-                  alt={getMovieName(movie)}
-                  className="my-movies-poster"
-                  onError={e => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
-                />
-              </Link>
-              <div className="my-movies-info">
-                <Link to={getMoviePath(movie)} className="my-movies-name">
-                  {getMovieName(movie)}
+        <>
+          <div className="my-movies-list">
+            {pageItems.map(movie => (
+              <div key={movie.kinopoiskId} className="my-movies-card">
+                <Link to={getMoviePath(movie)} state={{ page: pageClamped }}>
+                  <img
+                    src={movie.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
+                    alt={getMovieName(movie)}
+                    className="my-movies-poster"
+                    onError={e => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
+                  />
                 </Link>
-                {movie.nameOriginal && (
-                  <p className="my-movies-original">{movie.nameOriginal}</p>
-                )}
-                <div className="my-movies-meta">
-                  <span className="my-movies-year">
-                    {movie.year && movie.year !== 0 ? movie.year : '—'}
-                  </span>
-                  <span className="my-movies-meta-item">
-                    <Clock size={12} />
-                    {movie.filmLength ? `${movie.filmLength} мин` : '—'}
-                  </span>
-                  <span className="my-movies-meta-item my-movies-rating">
-                    <Star size={12} />
-                    {movie.ratingKinopoisk || '—'}
-                  </span>
+                <div className="my-movies-info">
+                  <Link
+                    to={getMoviePath(movie)}
+                    state={{ page: pageClamped }}
+                    className="my-movies-name"
+                  >
+                    {getMovieName(movie)}
+                  </Link>
+                  {movie.nameOriginal && (
+                    <p className="my-movies-original">{movie.nameOriginal}</p>
+                  )}
+                  <div className="my-movies-meta">
+                    <span className="my-movies-year">
+                      {movie.year && movie.year !== 0 ? movie.year : '—'}
+                    </span>
+                    <span className="my-movies-meta-item">
+                      <Clock size={12} />
+                      {movie.filmLength ? `${movie.filmLength} мин` : '—'}
+                    </span>
+                    <span className="my-movies-meta-item my-movies-rating">
+                      <Star size={12} />
+                      {movie.ratingKinopoisk || '—'}
+                    </span>
+                  </div>
                 </div>
+                <button
+                  className="my-movies-watched-btn"
+                  onClick={() => handleMarkWatched(movie)}
+                  disabled={updatingId === movie.kinopoiskId}
+                  title="Отметить просмотренным"
+                >
+                  <Check size={20} />
+                </button>
               </div>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="my-series-pagination">
               <button
-                className="my-movies-watched-btn"
-                onClick={() => handleMarkWatched(movie)}
-                disabled={updatingId === movie.kinopoiskId}
-                title="Отметить просмотренным"
+                type="button"
+                className="my-series-page-btn"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={pageClamped === 1}
               >
-                <Check size={20} />
+                <ChevronLeft size={16} /> Назад
+              </button>
+              <span className="my-series-page-info">
+                Страница {pageClamped} из {totalPages}
+              </span>
+              <button
+                type="button"
+                className="my-series-page-btn"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={pageClamped === totalPages}
+              >
+                Вперёд <ChevronRight size={16} />
               </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   )
