@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
@@ -7,6 +7,12 @@ import { Check, ArrowDownUp, Clock, Star, ChevronLeft, ChevronRight } from 'luci
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
+
+const SESSION_KEY = 'my-movies-session-active'
+const SCROLL_KEY = 'my-movies-scroll'
+const MOVIES_KEY = 'my-movies-data'
+const PAGE_KEY = 'my-movies-page'
+const SORT_KEY = 'my-movies-sort'
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'По названию (А-Я)' },
@@ -16,21 +22,38 @@ const SORT_OPTIONS = [
   { value: 'rating_desc', label: 'По рейтингу' },
 ]
 
+const isSessionRestore = () => sessionStorage.getItem(SESSION_KEY) === 'true'
+
+function readSavedMovies() {
+  if (!isSessionRestore()) return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MOVIES_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
+function readSavedPage() {
+  if (!isSessionRestore()) return 1
+  const p = Number(localStorage.getItem(PAGE_KEY))
+  return Number.isFinite(p) && p >= 1 ? p : 1
+}
+
 export default function ElysiumMyMovies() {
   const { token } = useAuth()
-  const location = useLocation()
-  const navigate = useNavigate()
 
-  const [movies, setMovies] = useState([])
-  const [loading, setLoading] = useState(true)
+  // Первый заход в таб — ставим флаг «сессия активна».
+  // При всех последующих монтированиях (в т.ч. через кнопку Назад браузера)
+  // флаг уже стоит → данные и скролл восстанавливаются из localStorage.
+  useEffect(() => { sessionStorage.setItem(SESSION_KEY, 'true') }, [])
+
+  const [movies, setMovies] = useState(readSavedMovies)
+  const [loading, setLoading] = useState(() => readSavedMovies().length === 0)
   const [updatingId, setUpdatingId] = useState(null)
-  const [sortBy, setSortBy] = useState(() => localStorage.getItem('my-movies-sort') || 'name_asc')
+  const [sortBy, setSortBy] = useState(() => localStorage.getItem(SORT_KEY) || 'name_asc')
+  const [page, setPage] = useState(readSavedPage)
 
-  // Страница берётся из location.state.page (если вернулись с карточки)
-  const [page, setPage] = useState(() => {
-    const p = location.state?.page
-    return (typeof p === 'number' && p >= 1) ? p : 1
-  })
+  // Если данные пришли из localStorage — не делаем повторный запрос
+  const restoredFromStorage = useRef(movies.length > 0)
 
   const fetchMovies = async () => {
     if (!token) return
@@ -47,8 +70,34 @@ export default function ElysiumMyMovies() {
     } finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchMovies() }, [token])
-  useEffect(() => { localStorage.setItem('my-movies-sort', sortBy) }, [sortBy])
+  useEffect(() => {
+    if (!token) return
+    if (restoredFromStorage.current) {
+      restoredFromStorage.current = false
+      setLoading(false)
+      return
+    }
+    fetchMovies()
+  }, [token])
+
+  // ── Сохранение всего нужного в localStorage ──
+  useEffect(() => { localStorage.setItem(SORT_KEY, sortBy) }, [sortBy])
+  useEffect(() => { localStorage.setItem(MOVIES_KEY, JSON.stringify(movies)) }, [movies])
+  useEffect(() => { localStorage.setItem(PAGE_KEY, String(page)) }, [page])
+
+  // Скролл сохраняем при размонтировании (как в ElysiumMain)
+  useEffect(() => () => {
+    localStorage.setItem(SCROLL_KEY, String(window.scrollY))
+  }, [])
+
+  // Восстановление скролла при монтировании — до paint, чтобы не мигало
+  useLayoutEffect(() => {
+    if (!isSessionRestore()) return
+    const y = Number(localStorage.getItem(SCROLL_KEY))
+    if (!y) return
+    const raf = requestAnimationFrame(() => window.scrollTo(0, y))
+    return () => cancelAnimationFrame(raf)
+  }, [])
 
   const handleMarkWatched = async (movie) => {
     setUpdatingId(movie.kinopoiskId)
@@ -76,10 +125,11 @@ export default function ElysiumMyMovies() {
     } finally { setUpdatingId(null) }
   }
 
-  // Смена сортировки сбрасывает страницу на 1
   const handleSortChange = (value) => {
     setSortBy(value)
     setPage(1)
+    window.scrollTo(0, 0)
+    localStorage.removeItem(SCROLL_KEY)
   }
 
   const sorted = [...movies].sort((a, b) => {
@@ -106,20 +156,15 @@ export default function ElysiumMyMovies() {
   const pageClamped = Math.min(Math.max(1, page), totalPages)
   const pageItems = sorted.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
 
-  // Подтягиваем page к допустимому диапазону, если фильмов стало меньше
   useEffect(() => {
     if (page !== pageClamped) setPage(pageClamped)
   }, [page, pageClamped])
 
-  // Сохраняем текущую страницу в location.state,
-  // чтобы при возврате с карточки она восстановилась.
-  useEffect(() => {
-    navigate(location.pathname, {
-      replace: true,
-      state: { ...(location.state || {}), page: pageClamped },
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageClamped])
+  const handlePageChange = (next) => {
+    setPage(next)
+    window.scrollTo(0, 0)
+    localStorage.setItem(SCROLL_KEY, '0')
+  }
 
   if (loading) return (
     <div className="my-series-body">
@@ -159,7 +204,7 @@ export default function ElysiumMyMovies() {
           <div className="my-movies-list">
             {pageItems.map(movie => (
               <div key={movie.kinopoiskId} className="my-movies-card">
-                <Link to={getMoviePath(movie)} state={{ page: pageClamped }}>
+                <Link to={getMoviePath(movie)}>
                   <img
                     src={movie.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
                     alt={getMovieName(movie)}
@@ -170,7 +215,6 @@ export default function ElysiumMyMovies() {
                 <div className="my-movies-info">
                   <Link
                     to={getMoviePath(movie)}
-                    state={{ page: pageClamped }}
                     className="my-movies-name"
                   >
                     {getMovieName(movie)}
@@ -209,7 +253,7 @@ export default function ElysiumMyMovies() {
               <button
                 type="button"
                 className="my-series-page-btn"
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => handlePageChange(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 <ChevronLeft size={16} /> Назад
@@ -220,7 +264,7 @@ export default function ElysiumMyMovies() {
               <button
                 type="button"
                 className="my-series-page-btn"
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => handlePageChange(Math.min(totalPages, pageClamped + 1))}
                 disabled={pageClamped === totalPages}
               >
                 Вперёд <ChevronRight size={16} />
