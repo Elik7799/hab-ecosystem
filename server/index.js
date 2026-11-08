@@ -723,13 +723,7 @@ async function recalcUserSeriesStatus(userId, tmdbId) {
      WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
     [userId, tmdbId]
   )
-  if (cur.rows.length === 0) {
-    return { changed: false, newStatus: 'not_watched', oldStatus: 'not_watched' }
-  }
-  const oldStatus = cur.rows[0].status
-  if (oldStatus === 'dropped' || oldStatus === 'want_to_watch' || oldStatus === 'not_watched') {
-    return { changed: false, newStatus: oldStatus, oldStatus }
-  }
+  const oldStatus = cur.rows[0]?.status || 'not_watched'
 
   const episodes = await pool.query(
     `SELECT season_number, episode_number, air_date
@@ -749,33 +743,49 @@ async function recalcUserSeriesStatus(userId, tmdbId) {
   )
   const watchedCount = watched.rows[0].c
 
-  let newStatus = oldStatus
-  if (airedCount > 0 && watchedCount >= airedCount) {
-    newStatus = 'watched'
-  } else if (airedCount > 0 && watchedCount > 0 && watchedCount < airedCount) {
-    newStatus = 'watching'
-  } else if (watchedCount === 0 && airedCount > 0) {
-    // Ничего не отмечено, но есть вышедшие серии → not_watched
-    // (был watching, но ни одной серии не отмечено)
-    await pool.query(
-      `DELETE FROM user_movies
-       WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
-      [userId, tmdbId]
-    )
-    return { changed: true, newStatus: 'not_watched', oldStatus }
-  }
-  // иначе (watchedCount === 0 && airedCount === 0) — оставляем статус
-  // (сериал анонсирован, но серии ещё не вышли — watching остаётся)
+  // ── Есть отмеченные серии: всегда watching/watched, независимо от прошлого статуса ──
+  if (watchedCount > 0) {
+    const newStatus =
+      airedCount > 0 && watchedCount >= airedCount ? 'watched' : 'watching'
 
-  if (newStatus !== oldStatus) {
-    await pool.query(
-      `UPDATE user_movies SET status = $1
-       WHERE user_id = $2 AND movie_id = $3 AND movie_type = 'TV_SERIES'`,
-      [newStatus, userId, tmdbId]
-    )
-    return { changed: true, newStatus, oldStatus }
+    if (cur.rows.length === 0) {
+      // Строки не было (not_watched) — создаём
+      await pool.query(
+        `INSERT INTO user_movies (user_id, movie_id, movie_type, status, last_watched_at)
+         VALUES ($1, $2, 'TV_SERIES', $3, NOW())
+         ON CONFLICT (user_id, movie_id, movie_type) DO UPDATE SET
+           status = EXCLUDED.status,
+           last_watched_at = COALESCE(user_movies.last_watched_at, NOW())`,
+        [userId, tmdbId, newStatus]
+      )
+      return { changed: true, newStatus, oldStatus }
+    }
+    if (newStatus !== oldStatus) {
+      await pool.query(
+        `UPDATE user_movies SET status = $1
+         WHERE user_id = $2 AND movie_id = $3 AND movie_type = 'TV_SERIES'`,
+        [newStatus, userId, tmdbId]
+      )
+      return { changed: true, newStatus, oldStatus }
+    }
+    return { changed: false, newStatus: oldStatus, oldStatus }
   }
-  return { changed: false, newStatus: oldStatus, oldStatus }
+
+  // ── Ничего не отмечено ──
+  if (oldStatus === 'dropped' || oldStatus === 'want_to_watch' || oldStatus === 'not_watched') {
+    return { changed: false, newStatus: oldStatus, oldStatus }
+  }
+  if (airedCount === 0) {
+    // Сериал анонсирован, серии ещё не вышли — статус не трогаем
+    return { changed: false, newStatus: oldStatus, oldStatus }
+  }
+  // watching/watched, но все серии сняты и есть вышедшие → сбрасываем в not_watched
+  await pool.query(
+    `DELETE FROM user_movies
+     WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
+    [userId, tmdbId]
+  )
+  return { changed: true, newStatus: 'not_watched', oldStatus }
 }
 
 /**
@@ -897,11 +907,8 @@ async function getStatus(req, res, dbType) {
     )
     let currentStatus = r.rows[0]?.status || 'not_watched'
 
-    // Автопереоценка для сериалов через общую утилиту.
-    // recalcUserSeriesStatus уже сам решает, надо ли менять:
-    //   - dropped / want_to_watch / not_watched → не трогает
-    //   - watching / watched → пересчитывает по aired/watched
-    if (dbType === 'TV_SERIES' && (currentStatus === 'watching' || currentStatus === 'watched')) {
+    // Пересчитываем для всех сериалов — функция сама решает, надо ли менять
+    if (dbType === 'TV_SERIES') {
       const res2 = await recalcUserSeriesStatus(userId, tmdbId)
       if (res2.changed) currentStatus = res2.newStatus
     }
@@ -912,6 +919,7 @@ async function getStatus(req, res, dbType) {
     res.status(500).json({ error: 'Ошибка' })
   }
 }
+
 // POST body { status }
 async function setStatus(req, res, dbType) {
   const tmdbId = parseInt(req.params.id)

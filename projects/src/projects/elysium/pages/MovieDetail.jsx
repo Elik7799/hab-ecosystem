@@ -324,7 +324,22 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
               const isWatchedFinal = isSeries && status === 'watched'
 
               return STATUSES.map(s => {
-                if (isSeries && s.value === 'watched') return null
+                if (isSeries && s.value === 'watched') {
+                  // Активный индикатор «Посмотрел», когда все вышедшие серии просмотрены
+                  if (status === 'watched') {
+                    return (
+                      <button
+                        key={s.value}
+                        className="moviedetail-statusbtn moviedetail-statusbtnactive"
+                        disabled
+                      >
+                        {s.label}
+                      </button>
+                    )
+                  }
+                  return null
+                }
+
                 const disNot = s.value === 'not_watched' && hasSomeWatched
                 const disWant = s.value === 'want_to_watch' && allAiredWatched
                 const dis = disNot || disWant
