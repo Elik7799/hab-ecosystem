@@ -829,11 +829,19 @@ app.post('/api/episodes/toggle', authMiddleware, async (req, res) => {
   const userId = req.user.id
   try {
     if (watched) {
-      await pool.query(`/* INSERT ... */`, [/* ... */])
+      await pool.query(`
+        INSERT INTO user_episodes (user_id, movie_id, movie_type, season_number, episode_number)
+        VALUES ($1, $2, 'TV_SERIES', $3, $4)
+        ON CONFLICT (user_id, movie_id, movie_type, season_number, episode_number) DO NOTHING
+      `, [userId, movieId, seasonNumber, episodeNumber])
     } else {
-      await pool.query(`/* DELETE ... */`, [/* ... */])
+      await pool.query(`
+        DELETE FROM user_episodes
+        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+          AND season_number = $3 AND episode_number = $4
+      `, [userId, movieId, seasonNumber, episodeNumber])
     }
-    // force=true только при добавлении отметки
+    // force = true ТОЛЬКО когда ставим отметку. Снятие — force=false (уважаем want_to_watch/dropped)
     const newStatus = await recalcStatus(movieId, userId, watched === true)
     res.json({ success: true, newStatus })
   } catch (err) {
@@ -848,9 +856,22 @@ app.post('/api/episodes/bulk-toggle', authMiddleware, async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    // ... (INSERT / DELETE без изменений)
+    for (const ep of episodes) {
+      if (watched) {
+        await client.query(`
+          INSERT INTO user_episodes (user_id, movie_id, movie_type, season_number, episode_number)
+          VALUES ($1, $2, 'TV_SERIES', $3, $4)
+          ON CONFLICT (user_id, movie_id, movie_type, season_number, episode_number) DO NOTHING
+        `, [userId, movieId, seasonNumber, ep.episode_number])
+      } else {
+        await client.query(`
+          DELETE FROM user_episodes
+          WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'
+            AND season_number = $3 AND episode_number = $4
+        `, [userId, movieId, seasonNumber, ep.episode_number])
+      }
+    }
     await client.query('COMMIT')
-    // force=true только при «отметить сезон»
     const newStatus = await recalcStatus(movieId, userId, watched === true)
     res.json({ success: true, newStatus })
   } catch (err) {
