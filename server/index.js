@@ -754,8 +754,9 @@ async function recalcUserSeriesStatus(userId, tmdbId) {
     newStatus = 'watched'
   } else if (airedCount > 0 && watchedCount > 0 && watchedCount < airedCount) {
     newStatus = 'watching'
-  } else if (watchedCount === 0) {
-    // Нечего смотреть — удаляем строку
+  } else if (watchedCount === 0 && airedCount > 0) {
+    // Ничего не отмечено, но есть вышедшие серии → not_watched
+    // (был watching, но ни одной серии не отмечено)
     await pool.query(
       `DELETE FROM user_movies
        WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
@@ -763,6 +764,8 @@ async function recalcUserSeriesStatus(userId, tmdbId) {
     )
     return { changed: true, newStatus: 'not_watched', oldStatus }
   }
+  // иначе (watchedCount === 0 && airedCount === 0) — оставляем статус
+  // (сериал анонсирован, но серии ещё не вышли — watching остаётся)
 
   if (newStatus !== oldStatus) {
     await pool.query(
@@ -1114,15 +1117,16 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
   const userId = req.user.id
   try {
     const movies = await pool.query(`
-     SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
-     m.name_ru AS "nameRu", m.name_original AS "nameOriginal",
-     m.poster_url_preview AS "posterUrlPreview", m.year,
-     um.last_watched_at AS "lastWatchedAt"
-     FROM user_movies um
-     JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
-     WHERE um.user_id = $1 AND um.status = 'watching'
-     ORDER BY um.id DESC
-`, [userId])
+      SELECT m.tmdb_id AS "kinopoiskId", m.tmdb_id AS "tmdbId", m.type,
+        m.name_ru AS "nameRu", m.name_original AS "nameOriginal",
+        m.poster_url_preview AS "posterUrlPreview", m.year,
+        um.status,
+        um.last_watched_at AS "lastWatchedAt"
+      FROM user_movies um
+      JOIN movies m ON m.tmdb_id = um.movie_id AND m.type = um.movie_type
+      WHERE um.user_id = $1 AND um.status IN ('watching', 'watched')
+      ORDER BY um.id DESC
+    `, [userId])
 
     const series = []
     for (const movie of movies.rows) {
@@ -1137,14 +1141,40 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
       const watchedSet = new Set(watched.rows.map(e =>
         `${e.season_number}-${e.episode_number}`
       ))
+
+      // Всё вышедшее просмотрено → не показываем в «Смотрю»
+      // и не трогаем статус (он должен быть 'watched', если ещё не)
+      if (aired.length > 0 && watchedSet.size >= aired.length) {
+        if (movie.status === 'watching') {
+          await pool.query(
+            `UPDATE user_movies SET status = 'watched'
+             WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
+            [userId, movie.tmdbId]
+          )
+        }
+        continue
+      }
+
+      // Есть непросмотренные вышедшие серии, но был watched → переводим в watching
+      // (например, вышла новая серия, пока пользователь не заходил)
+      if (movie.status === 'watched') {
+        await pool.query(
+          `UPDATE user_movies SET status = 'watching'
+           WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
+          [userId, movie.tmdbId]
+        )
+      }
+
       let next = null
       for (const ep of aired) {
         if (!watchedSet.has(`${ep.season_number}-${ep.episode_number}`)) {
           next = ep; break
         }
       }
+
       series.push({
         ...movie,
+        status: 'watching', // нормализуем для фронта
         nextSeason: next?.season_number ?? null,
         nextEpisode: next?.episode_number ?? null,
         nextEpisodeName: next?.name_ru ?? null,
@@ -1156,7 +1186,7 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
     }
     res.json({ series })
   } catch (err) {
-    console.error(err)
+    console.error('/users/me/watching:', err.message)
     res.status(500).json({ error: 'Ошибка' })
   }
 })
