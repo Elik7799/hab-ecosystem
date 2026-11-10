@@ -1,9 +1,10 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { MovieGridSkeleton } from '../components/ElysiumSkeleton'
 import { showError } from '../../../utils/ElysiumToast'
+import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
@@ -24,6 +25,7 @@ const FILTERS = [
 ]
 
 const SESSION_KEY = 'main-session-active'
+const SCROLL_KEY = 'main-scroll-y'
 const isSessionRestore = () => sessionStorage.getItem(SESSION_KEY) === 'true'
 
 function readSavedMovies() {
@@ -69,6 +71,9 @@ export default function ElysiumMain() {
   const restoredFromStorage = useRef(movies.length > 0)
   const restoredSearchFromStorage = useRef(movies.length > 0 && isSearching && query.trim() !== '')
 
+  // Единый хук восстановления скролла — работает и с window, и с .app-main
+  useScrollRestore(SCROLL_KEY, !loading)
+
   const fetchPopular = useCallback(async (pageNum, append = false) => {
     if (!token) return
     append ? setLoadingMore(true) : setLoading(true)
@@ -100,10 +105,14 @@ export default function ElysiumMain() {
 
   useEffect(() => {
     if (!token || isSearching) return
-    if (restoredFromStorage.current) { restoredFromStorage.current = false; setLoading(false); return }
+    if (restoredFromStorage.current) {
+      restoredFromStorage.current = false
+      setLoading(false)
+      return
+    }
     setMovies([]); setPage(1); setHasMore(false); setTotalPages(1)
-    window.scrollTo(0, 0)
-    localStorage.removeItem('main-scroll-y')
+    scrollToTop()
+    sessionStorage.removeItem(SCROLL_KEY)
     fetchPopular(1, false)
   }, [token, category, filter, fetchPopular, isSearching])
 
@@ -115,19 +124,11 @@ export default function ElysiumMain() {
   useEffect(() => { localStorage.setItem('main-page', String(page)) }, [page])
   useEffect(() => { localStorage.setItem('main-has-more', String(hasMore)) }, [hasMore])
   useEffect(() => { localStorage.setItem('main-total-pages', String(totalPages)) }, [totalPages])
-  useEffect(() => () => { localStorage.setItem('main-scroll-y', String(window.scrollY)) }, [])
-
-  useLayoutEffect(() => {
-    const y = Number(localStorage.getItem('main-scroll-y'))
-    if (!y) return
-    const raf = requestAnimationFrame(() => window.scrollTo(0, y))
-    return () => cancelAnimationFrame(raf)
-  }, [])
 
   const searchMovies = useCallback(async (keyword) => {
     if (!token) return
-    window.scrollTo(0, 0)
-    localStorage.removeItem('main-scroll-y')
+    scrollToTop()
+    sessionStorage.removeItem(SCROLL_KEY)
     setLoading(true); setError('')
     try {
       const res = await fetch(
@@ -158,8 +159,8 @@ export default function ElysiumMain() {
   const handleClearSearch = () => {
     setQuery(''); setIsSearching(false); setFilter('ALL'); setCategory('MARVEL')
     localStorage.removeItem('main-query'); localStorage.removeItem('main-is-searching')
-    localStorage.removeItem('main-scroll-y')
-    window.scrollTo(0, 0)
+    sessionStorage.removeItem(SCROLL_KEY)
+    scrollToTop()
     fetchPopular(1, false)
   }
   const handleLoadMore = () => { if (!loadingMore && hasMore) fetchPopular(page + 1, true) }

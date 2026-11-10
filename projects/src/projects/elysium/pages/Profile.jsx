@@ -1,15 +1,11 @@
-import { useState, useEffect, useLayoutEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { ProfileSkeleton } from '../components/ElysiumSkeleton'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
+import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-
-// Отключаем встроенное восстановление скролла браузера — у нас своё.
-if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
-  window.history.scrollRestoration = 'manual'
-}
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
@@ -29,8 +25,8 @@ const STATUS_LABELS = {
   dropped: 'Перестал смотреть',
 }
 
-const pageKey   = (pid) => `profile-page-${pid}`
 const scrollKey = (pid) => `profile-scroll-${pid}`
+const pageKey   = (pid) => `profile-page-${pid}`
 
 export default function ElysiumProfile() {
   const { id } = useParams()
@@ -54,63 +50,25 @@ export default function ElysiumProfile() {
 
   const profileId = id || currentUser?.id
 
-  // ── Пагинация ──
   const [page, setPage] = useState(() => {
     if (!profileId) return 1
     const p = Number(sessionStorage.getItem(pageKey(profileId)))
     return Number.isFinite(p) && p >= 1 ? p : 1
   })
 
-  // Производные значения — до хуков, которые их используют
-  const totalPages  = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
   const pageClamped = Math.min(Math.max(1, page), totalPages)
-  const pageItems   = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
+  const pageItems = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
 
-  // ───────────────────── ХУКИ ─────────────────────
+  // Единый хук восстановления — работает и с window, и с overflow-контейнером
+  useScrollRestore(profileId ? scrollKey(profileId) : null, !loading && !moviesLoading)
 
-  // 1) Сохраняем страницу
   useEffect(() => {
     if (!profileId) return
     sessionStorage.setItem(pageKey(profileId), String(page))
   }, [page, profileId])
 
-  // 2) Сохраняем скролл на каждом scroll + на unmount (страховка)
-  useEffect(() => {
-    if (!profileId) return
-    const onScroll = () => {
-      sessionStorage.setItem(scrollKey(profileId), String(window.scrollY))
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      sessionStorage.setItem(scrollKey(profileId), String(window.scrollY))
-    }
-  }, [profileId])
-
-  // 3) Восстанавливаем скролл — с ретраями, пока контент не дорастёт
-  useLayoutEffect(() => {
-    if (!profileId || loading || moviesLoading) return
-    const y = Number(sessionStorage.getItem(scrollKey(profileId)))
-    if (!y || y <= 0) return
-
-    let cancelled = false
-    let attempts = 0
-    const maxAttempts = 30 // 30 × 50 мс ≈ 1.5 сек
-
-    const tryRestore = () => {
-      if (cancelled) return
-      window.scrollTo(0, y)
-      // Если ещё не доехали (контента пока не хватает) — повторим
-      if (window.scrollY < y - 2 && attempts < maxAttempts) {
-        attempts++
-        setTimeout(tryRestore, 50)
-      }
-    }
-    tryRestore()
-    return () => { cancelled = true }
-  }, [loading, moviesLoading, profileId])
-
-  // 4) Загрузка профиля
+  // Загрузка профиля
   useEffect(() => {
     if (!token || !profileId) return
     (async () => {
@@ -130,7 +88,7 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId])
 
-  // 5) Загрузка фильмов
+  // Загрузка фильмов
   useEffect(() => {
     if (!token || !profileId) return
     (async () => {
@@ -144,23 +102,22 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId, filter])
 
-  // 6) Клампим страницу — только после загрузки фильмов
+  // Клампим страницу — только после загрузки
   useEffect(() => {
     if (moviesLoading) return
     if (page !== pageClamped) setPage(pageClamped)
   }, [page, pageClamped, moviesLoading])
 
-  // ───────────────────── ОБРАБОТЧИКИ ─────────────────────
   const handleFilterChange = (value) => {
     setFilter(value)
     setPage(1)
-    window.scrollTo(0, 0)
+    scrollToTop()
     if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
   }
 
   const handlePageChange = (next) => {
     setPage(next)
-    window.scrollTo(0, 0)
+    scrollToTop()
     if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
   }
 
@@ -217,7 +174,6 @@ export default function ElysiumProfile() {
     } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
-  // ───────────────────── РАННИЕ RETURN (после хуков) ─────────────────────
   if (loading) return <ProfileSkeleton />
 
   if (error || !profile) {

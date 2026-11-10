@@ -1,8 +1,9 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
+import { useScrollRestore } from '../../../utils/ElysiumScroll'
 import { Check, ArrowDownUp, Play, Star, ChevronDown, ChevronUp } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
@@ -42,10 +43,7 @@ function readCache(key) {
     const raw = sessionStorage.getItem(key)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    return {
-      data: parsed.data,
-      ts: parsed.ts,
-    }
+    return { data: parsed.data, ts: parsed.ts }
   } catch { return null }
 }
 
@@ -58,7 +56,6 @@ function writeCache(key, data) {
 export default function ElysiumMySeries() {
   const { token } = useAuth()
 
-  // Верхний список
   const [series, setSeries] = useState(() => readCache(SS.WATCHING_CACHE)?.data ?? [])
   const [loadingWatching, setLoadingWatching] = useState(
     () => readCache(SS.WATCHING_CACHE)?.data == null
@@ -66,7 +63,6 @@ export default function ElysiumMySeries() {
   const [updatingId, setUpdatingId] = useState(null)
   const [sortBy, setSortBy] = useState(() => localStorage.getItem('my-series-sort') || 'name_asc')
 
-  // Нижний список
   const [plannedOpen, setPlannedOpen] = useState(() => sessionStorage.getItem(SS.PLANNED_OPEN) === 'true')
   const [plannedSeries, setPlannedSeries] = useState(() => readCache(SS.PLANNED_CACHE)?.data ?? [])
   const [loadingPlanned, setLoadingPlanned] = useState(false)
@@ -79,33 +75,16 @@ export default function ElysiumMySeries() {
     return Number.isFinite(p) && p >= 1 ? p : 1
   })
 
-  const restoredScroll = useRef(false)
-
-  // Сохранение/восстановление скролла
-  useLayoutEffect(() => {
-    if (restoredScroll.current) return
-    restoredScroll.current = true
-    const y = Number(sessionStorage.getItem(SS.SCROLL) || 0)
-    if (y > 0) {
-      // Двойной RAF, чтобы дождаться отрисовки списков
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => window.scrollTo(0, y))
-      })
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      sessionStorage.setItem(SS.SCROLL, String(window.scrollY))
-    }
-  }, [])
+  // Готовы восстанавливать скролл, когда загружен верхний список
+  // и (если нижний блок раскрыт) загрузился и он.
+  const scrollReady = !loadingWatching && (!plannedOpen || plannedFetchedOnce)
+  useScrollRestore(SS.SCROLL, scrollReady)
 
   useEffect(() => { localStorage.setItem('my-series-sort', sortBy) }, [sortBy])
   useEffect(() => { localStorage.setItem('my-planned-series-sort', plannedSortBy) }, [plannedSortBy])
   useEffect(() => { sessionStorage.setItem(SS.PLANNED_OPEN, String(plannedOpen)) }, [plannedOpen])
   useEffect(() => { sessionStorage.setItem(SS.PLANNED_PAGE, String(plannedPage)) }, [plannedPage])
 
-  // Загрузка «Смотрю сейчас» — фоном даже если есть кэш
   const fetchSeries = async () => {
     if (!token) return
     if (series.length === 0) setLoadingWatching(true)
@@ -128,7 +107,6 @@ export default function ElysiumMySeries() {
     }
   }
 
-  // Загрузка «Буду смотреть» — только по требованию
   const fetchPlanned = async () => {
     if (!token) return
     setLoadingPlanned(true)
@@ -153,7 +131,6 @@ export default function ElysiumMySeries() {
     fetchSeries()
   }, [token])
 
-  // Если блок был раскрыт в прошлой сессии — грузим нижний список
   useEffect(() => {
     if (!token) return
     if (plannedOpen && !plannedFetchedOnce && !loadingPlanned) {
@@ -250,7 +227,6 @@ export default function ElysiumMySeries() {
 
   return (
     <div className="my-series-body">
-      {/* ─── Смотрю сейчас ─── */}
       <div className="my-series-header-row">
         <div>
           <h1 className="my-series-title">Смотрю сейчас</h1>
@@ -319,7 +295,6 @@ export default function ElysiumMySeries() {
         </div>
       )}
 
-      {/* ─── Буду смотреть (скрыт, пока не раскрыт) ─── */}
       <div
         className="my-series-header-row my-series-header-row-planned my-series-collapse-header"
         onClick={togglePlanned}

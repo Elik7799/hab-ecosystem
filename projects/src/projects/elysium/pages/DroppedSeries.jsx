@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
+import { useScrollRestore } from '../../../utils/ElysiumScroll'
 import { ArrowDownUp, Play, Star } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
@@ -45,26 +46,10 @@ export default function ElysiumDroppedSeries() {
   const [sortBy, setSortBy] = useState(
     () => localStorage.getItem(SS.SORT) || 'last_watched_desc'
   )
-  const restoredScroll = useRef(false)
+
+  useScrollRestore(SS.SCROLL, !loading)
 
   useEffect(() => { localStorage.setItem(SS.SORT, sortBy) }, [sortBy])
-
-  useEffect(() => {
-    return () => {
-      sessionStorage.setItem(SS.SCROLL, String(window.scrollY))
-    }
-  }, [])
-
-  useEffect(() => {
-    if (restoredScroll.current) return
-    restoredScroll.current = true
-    const y = Number(sessionStorage.getItem(SS.SCROLL) || 0)
-    if (y > 0) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => window.scrollTo(0, y))
-      })
-    }
-  }, [])
 
   const fetchSeries = async () => {
     if (!token) return
@@ -106,7 +91,6 @@ export default function ElysiumDroppedSeries() {
       )
       if (r.ok) {
         showSuccess(`«${getMovieName(show)}» снова в «Смотрю»`)
-        // Оптимистично убираем из списка
         setSeries(prev => {
           const next = prev.filter(s => s.kinopoiskId !== show.kinopoiskId)
           writeCache(next)
