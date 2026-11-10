@@ -6,6 +6,11 @@ import { ProfileSkeleton } from '../components/ElysiumSkeleton'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
+// Отключаем встроенное восстановление скролла браузера — у нас своё.
+if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+  window.history.scrollRestoration = 'manual'
+}
+
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
 
@@ -43,7 +48,6 @@ export default function ElysiumProfile() {
 
   const [movies, setMovies] = useState([])
   const [filter, setFilter] = useState('all')
-  // ⬇⬇⬇ ВАЖНО: true по умолчанию — кламп страницы не сработает, пока не загрузились фильмы
   const [moviesLoading, setMoviesLoading] = useState(true)
   const [commonMovies, setCommonMovies] = useState([])
   const [showCommon, setShowCommon] = useState(false)
@@ -57,7 +61,7 @@ export default function ElysiumProfile() {
     return Number.isFinite(p) && p >= 1 ? p : 1
   })
 
-  // Все производные значения — до хуков, которые их используют
+  // Производные значения — до хуков, которые их используют
   const totalPages  = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
   const pageClamped = Math.min(Math.max(1, page), totalPages)
   const pageItems   = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
@@ -70,22 +74,40 @@ export default function ElysiumProfile() {
     sessionStorage.setItem(pageKey(profileId), String(page))
   }, [page, profileId])
 
-  // 2) Сохраняем скролл при размонтировании (переход на карточку и т.п.)
+  // 2) Сохраняем скролл на каждом scroll + на unmount (страховка)
   useEffect(() => {
     if (!profileId) return
+    const onScroll = () => {
+      sessionStorage.setItem(scrollKey(profileId), String(window.scrollY))
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
     return () => {
+      window.removeEventListener('scroll', onScroll)
       sessionStorage.setItem(scrollKey(profileId), String(window.scrollY))
     }
   }, [profileId])
 
-  // 3) Восстанавливаем скролл ПОСЛЕ того, как загрузились и профиль, и фильмы
+  // 3) Восстанавливаем скролл — с ретраями, пока контент не дорастёт
   useLayoutEffect(() => {
     if (!profileId || loading || moviesLoading) return
     const y = Number(sessionStorage.getItem(scrollKey(profileId)))
-    if (!y) return
-    window.scrollTo(0, y)                                  // синхронно — без мигания
-    const raf = requestAnimationFrame(() => window.scrollTo(0, y)) // страховка после картинок
-    return () => cancelAnimationFrame(raf)
+    if (!y || y <= 0) return
+
+    let cancelled = false
+    let attempts = 0
+    const maxAttempts = 30 // 30 × 50 мс ≈ 1.5 сек
+
+    const tryRestore = () => {
+      if (cancelled) return
+      window.scrollTo(0, y)
+      // Если ещё не доехали (контента пока не хватает) — повторим
+      if (window.scrollY < y - 2 && attempts < maxAttempts) {
+        attempts++
+        setTimeout(tryRestore, 50)
+      }
+    }
+    tryRestore()
+    return () => { cancelled = true }
   }, [loading, moviesLoading, profileId])
 
   // 4) Загрузка профиля
@@ -122,9 +144,9 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId, filter])
 
-  // 6) Клампим страницу — ТОЛЬКО когда фильмы уже загружены
+  // 6) Клампим страницу — только после загрузки фильмов
   useEffect(() => {
-    if (moviesLoading) return            // ← ключевой guard: не трогаем page до загрузки
+    if (moviesLoading) return
     if (page !== pageClamped) setPage(pageClamped)
   }, [page, pageClamped, moviesLoading])
 
@@ -195,7 +217,7 @@ export default function ElysiumProfile() {
     } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
-  // ───────────────────── РАННИЕ RETURN (только после хуков) ─────────────────────
+  // ───────────────────── РАННИЕ RETURN (после хуков) ─────────────────────
   if (loading) return <ProfileSkeleton />
 
   if (error || !profile) {
