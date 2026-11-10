@@ -35,7 +35,7 @@ function readCache() {
 function writeCache(data) {
   try {
     sessionStorage.setItem(SS.CACHE, JSON.stringify({ data, ts: Date.now() }))
-  } catch {}
+  } catch { }
 }
 
 export default function ElysiumDroppedSeries() {

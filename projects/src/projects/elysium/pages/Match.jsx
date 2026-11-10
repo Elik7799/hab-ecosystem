@@ -103,14 +103,14 @@ export default function ElysiumMatch() {
       const r = await fetch(`${API_URL_BACKEND}/friends`, { headers: { Authorization: `Bearer ${token}` } })
       const d = await r.json()
       setFriends(d.friends || [])
-    } catch {}
+    } catch { }
   }
   const loadRooms = async () => {
     try {
       const r = await fetch(`${API_URL_BACKEND}/match/rooms`, { headers: { Authorization: `Bearer ${token}` } })
       const d = await r.json()
       setInvitations(d.invitations || [])
-    } catch {}
+    } catch { }
   }
   const openRoom = async (id) => {
     try {
@@ -138,7 +138,7 @@ export default function ElysiumMatch() {
         setCurrentIndex(0); setMyVoted(null); setWaitingForOthers(false)
         setPhase(PHASE.VOTING)
       } else setError('Нет фильмов')
-    } catch {}
+    } catch { }
   }
 
   const toggleFriend = (fid) => {
@@ -176,7 +176,7 @@ export default function ElysiumMatch() {
         await openRoom(roomId); setPhase(PHASE.WAITING)
         if (socket) socket.emit('match:join_room', { roomId })
       } else loadRooms()
-    } catch {}
+    } catch { }
   }
 
   const handleStartRound = async () => {
@@ -206,7 +206,7 @@ export default function ElysiumMatch() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ movieId: movie.kinopoiskId, movieType: movie.type, vote }),
       })
-    } catch {}
+    } catch { }
     setMyVoted(vote); setWaitingForOthers(true)
     const mid = movie.kinopoiskId
     const isLast = currentIndex + 1 >= movies.length
@@ -253,7 +253,7 @@ export default function ElysiumMatch() {
       await fetch(`${API_URL_BACKEND}/match/rooms/${activeRoomId}/cancel`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
       })
-    } catch {}
+    } catch { }
     localStorage.removeItem('activeRoomId')
     setPhase(PHASE.SETUP); setInvitedFriends([]); setMovies([]); setCurrentIndex(0)
     setApproved([]); setActiveRoom(null); setActiveRoomId(null); setParticipants([])
