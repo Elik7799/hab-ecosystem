@@ -43,7 +43,8 @@ export default function ElysiumProfile() {
 
   const [movies, setMovies] = useState([])
   const [filter, setFilter] = useState('all')
-  const [moviesLoading, setMoviesLoading] = useState(false)
+  // ⬇⬇⬇ ВАЖНО: true по умолчанию — кламп страницы не сработает, пока не загрузились фильмы
+  const [moviesLoading, setMoviesLoading] = useState(true)
   const [commonMovies, setCommonMovies] = useState([])
   const [showCommon, setShowCommon] = useState(false)
 
@@ -56,19 +57,20 @@ export default function ElysiumProfile() {
     return Number.isFinite(p) && p >= 1 ? p : 1
   })
 
-  // ── Все вычисления — до хуков, которые от них зависят ──
+  // Все производные значения — до хуков, которые их используют
   const totalPages  = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
   const pageClamped = Math.min(Math.max(1, page), totalPages)
   const pageItems   = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
 
   // ───────────────────── ХУКИ ─────────────────────
+
   // 1) Сохраняем страницу
   useEffect(() => {
     if (!profileId) return
     sessionStorage.setItem(pageKey(profileId), String(page))
   }, [page, profileId])
 
-  // 2) Сохраняем скролл при размонтировании
+  // 2) Сохраняем скролл при размонтировании (переход на карточку и т.п.)
   useEffect(() => {
     if (!profileId) return
     return () => {
@@ -76,15 +78,15 @@ export default function ElysiumProfile() {
     }
   }, [profileId])
 
-  // 3) Восстанавливаем скролл после загрузки
+  // 3) Восстанавливаем скролл ПОСЛЕ того, как загрузились и профиль, и фильмы
   useLayoutEffect(() => {
     if (!profileId || loading || moviesLoading) return
     const y = Number(sessionStorage.getItem(scrollKey(profileId)))
     if (!y) return
-    const raf = requestAnimationFrame(() => window.scrollTo(0, y))
+    window.scrollTo(0, y)                                  // синхронно — без мигания
+    const raf = requestAnimationFrame(() => window.scrollTo(0, y)) // страховка после картинок
     return () => cancelAnimationFrame(raf)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, moviesLoading])
+  }, [loading, moviesLoading, profileId])
 
   // 4) Загрузка профиля
   useEffect(() => {
@@ -120,10 +122,11 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId, filter])
 
-  // 6) Клампим страницу, если после смены фильтра или удаления список стал короче
+  // 6) Клампим страницу — ТОЛЬКО когда фильмы уже загружены
   useEffect(() => {
+    if (moviesLoading) return            // ← ключевой guard: не трогаем page до загрузки
     if (page !== pageClamped) setPage(pageClamped)
-  }, [page, pageClamped])
+  }, [page, pageClamped, moviesLoading])
 
   // ───────────────────── ОБРАБОТЧИКИ ─────────────────────
   const handleFilterChange = (value) => {
@@ -192,7 +195,7 @@ export default function ElysiumProfile() {
     } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
-  // ───────────────────── РАННИЕ RETURN (только после всех хуков) ─────────────────────
+  // ───────────────────── РАННИЕ RETURN (только после хуков) ─────────────────────
   if (loading) return <ProfileSkeleton />
 
   if (error || !profile) {
