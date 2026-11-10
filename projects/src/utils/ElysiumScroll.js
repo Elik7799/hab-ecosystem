@@ -1,10 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 
-// Отключаем встроенное браузерное восстановление скролла — у нас своё.
-if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
-    window.history.scrollRestoration = 'manual'
-}
-
+// Пробуем все возможные scroll-контейнеры. Возвращает максимум — тот,
+// который реально прокручен.
 export function getScrollY() {
     const candidates = [0]
     candidates.push(window.scrollY || 0)
@@ -18,6 +15,8 @@ export function getScrollY() {
     return Math.max(...candidates)
 }
 
+// Прокручиваем ВСЕ возможные контейнеры. Для того, который реально скроллится —
+// значение применится, для остальных — no-op.
 export function setScrollY(y) {
     window.scrollTo(0, y)
     if (document.documentElement) document.documentElement.scrollTop = y
@@ -34,14 +33,13 @@ export function scrollToTop() {
 
 /**
  * Хук сохранения/восстановления скролла.
- *
- * @param {string|null} key - ключ в sessionStorage (null — не активировать)
+ * @param {string} key - ключ в sessionStorage
  * @param {boolean} ready - восстанавливать только когда данные загружены
  */
 export function useScrollRestore(key, ready = true) {
     const restoredFor = useRef(null)
 
-    // Сохраняем на каждом scroll + на unmount
+    // Сохраняем на каждом движении + на unmount (страховка)
     useEffect(() => {
         if (!key) return
         const handler = () => sessionStorage.setItem(key, String(getScrollY()))
@@ -52,7 +50,7 @@ export function useScrollRestore(key, ready = true) {
         }
     }, [key])
 
-    // Восстанавливаем. ResizeObserver ждёт, пока контент дорастёт до нужной высоты.
+    // Восстанавливаем с ретраями, пока контент не дорастёт до сохранённой высоты
     useLayoutEffect(() => {
         if (!key || !ready) return
         if (restoredFor.current === key) return
@@ -64,66 +62,18 @@ export function useScrollRestore(key, ready = true) {
         if (!y || y <= 0) return
 
         let cancelled = false
-        let ro = null
-        let timeout = null
-
-        const tryScroll = () => {
+        let attempts = 0
+        const maxAttempts = 40 // 40 × 40 мс ≈ 1.6 сек — хватит на догрузку картинок
+        const tryRestore = () => {
             if (cancelled) return
             setScrollY(y)
-        }
-
-        // Первая попытка сразу
-        tryScroll()
-
-        // Следим за высотой документа — восстанавливаем, как только сможем
-        const startObserver = () => {
-            if (cancelled) return
-            const targets = [document.body]
-            const main = document.querySelector('.app-main')
-            if (main) targets.push(main)
-            const wrapper = document.querySelector('.app-wrapper')
-            if (wrapper) targets.push(wrapper)
-
-            try {
-                ro = new ResizeObserver(() => {
-                    if (cancelled) return
-                    if (getScrollY() >= y - 2) {
-                        // Доехали — отключаемся
-                        ro?.disconnect()
-                        if (timeout) { clearTimeout(timeout); timeout = null }
-                        return
-                    }
-                    tryScroll()
-                })
-                targets.forEach(t => t && ro.observe(t))
-            } catch {
-                // Fallback на ретраи, если ResizeObserver не поддерживается
-                let attempts = 0
-                const retry = () => {
-                    if (cancelled) return
-                    setScrollY(y)
-                    if (getScrollY() < y - 2 && attempts < 60) {
-                        attempts++
-                        setTimeout(retry, 50)
-                    }
-                }
-                retry()
+            if (getScrollY() < y - 2 && attempts < maxAttempts) {
+                attempts++
+                setTimeout(tryRestore, 40)
             }
         }
+        tryRestore()
 
-        // Даём React смонтировать DOM на один тик, потом ставим observer
-        const t = setTimeout(startObserver, 0)
-
-        // Страховочный таймаут — через 10 сек прекращаем наблюдение
-        timeout = setTimeout(() => {
-            if (ro) ro.disconnect()
-        }, 10000)
-
-        return () => {
-            cancelled = true
-            clearTimeout(t)
-            if (timeout) clearTimeout(timeout)
-            if (ro) ro.disconnect()
-        }
+        return () => { cancelled = true }
     }, [key, ready])
 }

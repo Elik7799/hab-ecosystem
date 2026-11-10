@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
@@ -50,37 +50,19 @@ export default function ElysiumProfile() {
 
   const profileId = id || currentUser?.id
 
-  // page: берём из sessionStorage. Если profileId ещё undefined (currentUser грузится),
-  // восстановим ниже через эффект, когда profileId появится.
   const [page, setPage] = useState(() => {
     if (!profileId) return 1
     const p = Number(sessionStorage.getItem(pageKey(profileId)))
     return Number.isFinite(p) && p >= 1 ? p : 1
   })
 
-  const lastProfileId = useRef(profileId)
-
-  // Синхронизируем page, если profileId "догрузился" (или сменился)
-  useEffect(() => {
-    if (!profileId) return
-    if (lastProfileId.current === profileId) return
-    lastProfileId.current = profileId
-    const saved = Number(sessionStorage.getItem(pageKey(profileId)))
-    if (Number.isFinite(saved) && saved >= 1) {
-      setPage(saved)
-    } else {
-      setPage(1)
-    }
-  }, [profileId])
-
   const totalPages = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
   const pageClamped = Math.min(Math.max(1, page), totalPages)
   const pageItems = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
 
-  // ── Скролл ──
+  // Единый хук восстановления — работает и с window, и с overflow-контейнером
   useScrollRestore(profileId ? scrollKey(profileId) : null, !loading && !moviesLoading)
 
-  // Сохраняем актуальную страницу
   useEffect(() => {
     if (!profileId) return
     sessionStorage.setItem(pageKey(profileId), String(page))
