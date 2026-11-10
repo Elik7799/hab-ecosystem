@@ -24,8 +24,7 @@ const STATUS_LABELS = {
   dropped: 'Перестал смотреть',
 }
 
-// Ключи для сохранения позиции при переходе на карточку и обратно
-const pageKey  = (pid) => `profile-page-${pid}`
+const pageKey   = (pid) => `profile-page-${pid}`
 const scrollKey = (pid) => `profile-scroll-${pid}`
 
 export default function ElysiumProfile() {
@@ -50,20 +49,26 @@ export default function ElysiumProfile() {
 
   const profileId = id || currentUser?.id
 
-  // ── Пагинация: берём сохранённую страницу (если возвращаемся с карточки) ──
+  // ── Пагинация ──
   const [page, setPage] = useState(() => {
     if (!profileId) return 1
     const p = Number(sessionStorage.getItem(pageKey(profileId)))
     return Number.isFinite(p) && p >= 1 ? p : 1
   })
 
-  // Сохраняем страницу при каждом изменении
+  // ── Все вычисления — до хуков, которые от них зависят ──
+  const totalPages  = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
+  const pageClamped = Math.min(Math.max(1, page), totalPages)
+  const pageItems   = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
+
+  // ───────────────────── ХУКИ ─────────────────────
+  // 1) Сохраняем страницу
   useEffect(() => {
     if (!profileId) return
     sessionStorage.setItem(pageKey(profileId), String(page))
   }, [page, profileId])
 
-  // Сохраняем скролл при размонтировании
+  // 2) Сохраняем скролл при размонтировании
   useEffect(() => {
     if (!profileId) return
     return () => {
@@ -71,7 +76,7 @@ export default function ElysiumProfile() {
     }
   }, [profileId])
 
-  // Восстанавливаем скролл после загрузки данных
+  // 3) Восстанавливаем скролл после загрузки
   useLayoutEffect(() => {
     if (!profileId || loading || moviesLoading) return
     const y = Number(sessionStorage.getItem(scrollKey(profileId)))
@@ -81,12 +86,15 @@ export default function ElysiumProfile() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, moviesLoading])
 
+  // 4) Загрузка профиля
   useEffect(() => {
     if (!token || !profileId) return
     (async () => {
       setLoading(true); setError('')
       try {
-        const r = await fetch(`${API_URL_BACKEND}/users/${profileId}`, { headers: { Authorization: `Bearer ${token}` } })
+        const r = await fetch(`${API_URL_BACKEND}/users/${profileId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const d = await r.json()
         if (!r.ok) { setError(d.error || 'Не найден'); return }
         setProfile(d.user); setStats(d.stats)
@@ -98,6 +106,7 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId])
 
+  // 5) Загрузка фильмов
   useEffect(() => {
     if (!token || !profileId) return
     (async () => {
@@ -111,10 +120,31 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId, filter])
 
+  // 6) Клампим страницу, если после смены фильтра или удаления список стал короче
+  useEffect(() => {
+    if (page !== pageClamped) setPage(pageClamped)
+  }, [page, pageClamped])
+
+  // ───────────────────── ОБРАБОТЧИКИ ─────────────────────
+  const handleFilterChange = (value) => {
+    setFilter(value)
+    setPage(1)
+    window.scrollTo(0, 0)
+    if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
+  }
+
+  const handlePageChange = (next) => {
+    setPage(next)
+    window.scrollTo(0, 0)
+    if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
+  }
+
   const handleShowCommon = async () => {
     if (!isFriend) return
     try {
-      const r = await fetch(`${API_URL_BACKEND}/users/${profileId}/common`, { headers: { Authorization: `Bearer ${token}` } })
+      const r = await fetch(`${API_URL_BACKEND}/users/${profileId}/common`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       const d = await r.json()
       setCommonMovies(d.movies || []); setShowCommon(true)
     } catch { showError('Ошибка') }
@@ -162,6 +192,7 @@ export default function ElysiumProfile() {
     } catch { showError('Ошибка') } finally { setActionLoading(false) }
   }
 
+  // ───────────────────── РАННИЕ RETURN (только после всех хуков) ─────────────────────
   if (loading) return <ProfileSkeleton />
 
   if (error || !profile) {
@@ -176,30 +207,6 @@ export default function ElysiumProfile() {
   const joinDate = new Date(profile.created_at).toLocaleDateString('ru-RU', {
     year: 'numeric', month: 'long',
   })
-
-  // ── Пагинация ──
-  const totalPages = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
-  const pageClamped = Math.min(Math.max(1, page), totalPages)
-  const pageItems = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
-
-  // Если при смене фильтра текущая страница стала больше доступных — сбрасываем
-  useEffect(() => {
-    if (page !== pageClamped) setPage(pageClamped)
-  }, [page, pageClamped])
-
-  // Смена фильтра — на первую страницу и наверх
-  const handleFilterChange = (value) => {
-    setFilter(value)
-    setPage(1)
-    window.scrollTo(0, 0)
-    if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
-  }
-
-  const handlePageChange = (next) => {
-    setPage(next)
-    window.scrollTo(0, 0)
-    if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
-  }
 
   return (
     <div className="profile-body">
