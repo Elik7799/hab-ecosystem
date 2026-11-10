@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { ProfileSkeleton } from '../components/ElysiumSkeleton'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
+const PAGE_SIZE = 20
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Все' },
@@ -21,6 +23,10 @@ const STATUS_LABELS = {
   want_to_watch: 'Буду смотреть',
   dropped: 'Перестал смотреть',
 }
+
+// Ключи для сохранения позиции при переходе на карточку и обратно
+const pageKey  = (pid) => `profile-page-${pid}`
+const scrollKey = (pid) => `profile-scroll-${pid}`
 
 export default function ElysiumProfile() {
   const { id } = useParams()
@@ -43,6 +49,37 @@ export default function ElysiumProfile() {
   const [showCommon, setShowCommon] = useState(false)
 
   const profileId = id || currentUser?.id
+
+  // ── Пагинация: берём сохранённую страницу (если возвращаемся с карточки) ──
+  const [page, setPage] = useState(() => {
+    if (!profileId) return 1
+    const p = Number(sessionStorage.getItem(pageKey(profileId)))
+    return Number.isFinite(p) && p >= 1 ? p : 1
+  })
+
+  // Сохраняем страницу при каждом изменении
+  useEffect(() => {
+    if (!profileId) return
+    sessionStorage.setItem(pageKey(profileId), String(page))
+  }, [page, profileId])
+
+  // Сохраняем скролл при размонтировании
+  useEffect(() => {
+    if (!profileId) return
+    return () => {
+      sessionStorage.setItem(scrollKey(profileId), String(window.scrollY))
+    }
+  }, [profileId])
+
+  // Восстанавливаем скролл после загрузки данных
+  useLayoutEffect(() => {
+    if (!profileId || loading || moviesLoading) return
+    const y = Number(sessionStorage.getItem(scrollKey(profileId)))
+    if (!y) return
+    const raf = requestAnimationFrame(() => window.scrollTo(0, y))
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, moviesLoading])
 
   useEffect(() => {
     if (!token || !profileId) return
@@ -140,6 +177,30 @@ export default function ElysiumProfile() {
     year: 'numeric', month: 'long',
   })
 
+  // ── Пагинация ──
+  const totalPages = Math.max(1, Math.ceil(movies.length / PAGE_SIZE))
+  const pageClamped = Math.min(Math.max(1, page), totalPages)
+  const pageItems = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
+
+  // Если при смене фильтра текущая страница стала больше доступных — сбрасываем
+  useEffect(() => {
+    if (page !== pageClamped) setPage(pageClamped)
+  }, [page, pageClamped])
+
+  // Смена фильтра — на первую страницу и наверх
+  const handleFilterChange = (value) => {
+    setFilter(value)
+    setPage(1)
+    window.scrollTo(0, 0)
+    if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
+  }
+
+  const handlePageChange = (next) => {
+    setPage(next)
+    window.scrollTo(0, 0)
+    if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
+  }
+
   return (
     <div className="profile-body">
       <div className="profile-header">
@@ -233,7 +294,7 @@ export default function ElysiumProfile() {
             <button
               key={f.value}
               className={filter === f.value ? 'profile-filterbtn active' : 'profile-filterbtn'}
-              onClick={() => setFilter(f.value)}
+              onClick={() => handleFilterChange(f.value)}
             >
               {f.label}
             </button>
@@ -246,22 +307,48 @@ export default function ElysiumProfile() {
             {isOwn ? 'Нет фильмов' : 'У пользователя нет фильмов'}
           </p>
         ) : (
-          <div className="profile-moviesgrid">
-            {movies.map(m => (
-              <Link
-                key={`${m.kinopoiskId}:${m.type}`}
-                to={getMoviePath(m)}
-                className={`profile-moviecard status-${m.my_status || 'not_watched'}`}
-              >
-                <img src={m.posterUrlPreview} alt={getMovieName(m)} className="profile-movieposter" />
-                <div className="profile-movieinfo">
-                  <p className="profile-moviename">{getMovieName(m)}</p>
-                  <p className="profile-movieyear">{m.year && m.year !== 0 ? m.year : '—'}</p>
-                  {isOwn && <span className="profile-moviestatus">{STATUS_LABELS[m.status]}</span>}
-                </div>
-              </Link>
-            ))}
-          </div>
+          <>
+            <div className="profile-moviesgrid">
+              {pageItems.map(m => (
+                <Link
+                  key={`${m.kinopoiskId}:${m.type}`}
+                  to={getMoviePath(m)}
+                  className={`profile-moviecard status-${m.my_status || 'not_watched'}`}
+                >
+                  <img src={m.posterUrlPreview} alt={getMovieName(m)} className="profile-movieposter" />
+                  <div className="profile-movieinfo">
+                    <p className="profile-moviename">{getMovieName(m)}</p>
+                    <p className="profile-movieyear">{m.year && m.year !== 0 ? m.year : '—'}</p>
+                    {isOwn && <span className="profile-moviestatus">{STATUS_LABELS[m.status]}</span>}
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="my-series-pagination">
+                <button
+                  type="button"
+                  className="my-series-page-btn"
+                  onClick={() => handlePageChange(Math.max(1, pageClamped - 1))}
+                  disabled={pageClamped === 1}
+                >
+                  <ChevronLeft size={16} /> Назад
+                </button>
+                <span className="my-series-page-info">
+                  Страница {pageClamped} из {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="my-series-page-btn"
+                  onClick={() => handlePageChange(Math.min(totalPages, pageClamped + 1))}
+                  disabled={pageClamped === totalPages}
+                >
+                  Вперёд <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
