@@ -17,7 +17,6 @@
 @media (max-width: 768px) {
     .header-navbar {
         padding: 15px;
-        position: relative;
     }
 
     .header-logotxt {

@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { HashRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './projects/elysium/context/ElysiumAuthContext.jsx'
 import { SocketProvider } from './projects/elysium/context/ElysiumSocketContext.jsx'
@@ -12,7 +12,7 @@ import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
+    <HashRouter>
       <ThemeProvider>
         <AuthProvider>
           <SocketProvider>
@@ -40,6 +40,6 @@ createRoot(document.getElementById('root')).render(
           </SocketProvider>
         </AuthProvider>
       </ThemeProvider>
-    </BrowserRouter>
+    </HashRouter>
   </StrictMode>,
 )
