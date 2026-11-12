@@ -4,7 +4,7 @@ import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
 import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
-import { Check, ArrowDownUp, Clock, Star, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check, ArrowDownUp, Clock, Star, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 20
@@ -47,6 +47,7 @@ export default function ElysiumMyMovies() {
   const [movies, setMovies] = useState(readSavedMovies)
   const [loading, setLoading] = useState(() => readSavedMovies().length === 0)
   const [updatingId, setUpdatingId] = useState(null)
+  const [removingId, setRemovingId] = useState(null)
   const [sortBy, setSortBy] = useState(() => localStorage.getItem(SORT_KEY) || 'name_asc')
   const [page, setPage] = useState(readSavedPage)
 
@@ -107,6 +108,34 @@ export default function ElysiumMyMovies() {
     } catch {
       showError('Ошибка')
     } finally { setUpdatingId(null) }
+  }
+
+  const handleRemove = async (movie) => {
+    setRemovingId(movie.kinopoiskId)
+    try {
+      const res = await fetch(
+        `${API_URL_BACKEND}/movies/movie/${movie.kinopoiskId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: 'not_watched' }),
+        }
+      )
+      if (res.ok) {
+        showSuccess(`«${getMovieName(movie)}» убран из списка`)
+        setMovies(p => p.filter(m => m.kinopoiskId !== movie.kinopoiskId))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showError(d.error || 'Ошибка')
+      }
+    } catch {
+      showError('Ошибка')
+    } finally {
+      setRemovingId(null)
+    }
   }
 
   const handleSortChange = (value) => {
@@ -218,14 +247,29 @@ export default function ElysiumMyMovies() {
                     </span>
                   </div>
                 </div>
-                <button
-                  className="my-movies-watched-btn"
-                  onClick={() => handleMarkWatched(movie)}
-                  disabled={updatingId === movie.kinopoiskId}
-                  title="Отметить просмотренным"
-                >
-                  <Check size={20} />
-                </button>
+                {(() => {
+                  const isBusy = updatingId === movie.kinopoiskId || removingId === movie.kinopoiskId
+                  return (
+                    <div className="my-movies-btn-group">
+                      <button
+                        className="my-movies-watched-btn"
+                        onClick={() => handleMarkWatched(movie)}
+                        disabled={isBusy}
+                        title="Отметить просмотренным"
+                      >
+                        <Check size={20} />
+                      </button>
+                      <button
+                        className="my-movies-remove-btn"
+                        onClick={() => handleRemove(movie)}
+                        disabled={isBusy}
+                        title="Убрать из списка"
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+                  )
+                })()}
               </div>
             ))}
           </div>

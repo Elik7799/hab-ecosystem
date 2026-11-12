@@ -2746,9 +2746,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgb(46, 204, 113);
-  color: white;
-  border: none;
+  color: rgb(9, 201, 89);
+  border: 2px solid rgb(9, 201, 89);
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 14px;
@@ -2759,7 +2758,7 @@ body {
 }
 
 .my-series-btn-mark:hover:not(:disabled) {
-  background: rgb(39, 174, 96);
+  background: rgb(6, 114, 51);
 }
 
 .my-series-btn-mark:disabled {
@@ -3039,6 +3038,39 @@ body {
 }
 
 .my-movies-watched-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.my-movies-btn-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.my-movies-remove-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid rgb(199, 0, 0);
+  color: rgb(199, 0, 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.my-movies-remove-btn:hover:not(:disabled) {
+  background: rgb(199, 0, 0);
+  color: white;
+  transform: scale(1.05);
+}
+
+.my-movies-remove-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
