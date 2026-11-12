@@ -2745,6 +2745,7 @@ body {
 .my-series-btn-mark {
   display: inline-flex;
   align-items: center;
+  background: transparent;
   gap: 6px;
   color: rgb(9, 201, 89);
   border: 2px solid rgb(9, 201, 89);
@@ -2797,6 +2798,10 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 16px;
+}
+
+.my-series-empty-block .my-series-btn {
+  align-self: center;
 }
 
 /* ________________Import_______________ */
