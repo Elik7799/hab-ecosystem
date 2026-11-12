@@ -4,7 +4,7 @@ import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
 import { useScrollRestore } from '../../../utils/ElysiumScroll'
-import { Check, ArrowDownUp } from 'lucide-react'
+import { Check, ArrowDownUp, X } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 
@@ -45,6 +45,7 @@ export default function ElysiumMySeries() {
   const [series, setSeries] = useState(() => readCache() ?? [])
   const [loading, setLoading] = useState(() => readCache() == null)
   const [updatingId, setUpdatingId] = useState(null)
+  const [droppingId, setDroppingId] = useState(null)
   const [sortBy, setSortBy] = useState(() => localStorage.getItem('my-series-sort') || 'name_asc')
 
   useScrollRestore(SS.SCROLL, !loading)
@@ -98,6 +99,31 @@ export default function ElysiumMySeries() {
     finally { setUpdatingId(null) }
   }
 
+  const handleDrop = async (show) => {
+    setDroppingId(show.kinopoiskId)
+    try {
+      const r = await fetch(`${API_URL_BACKEND}/movies/tv/${show.kinopoiskId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: 'dropped' }),
+      })
+      if (r.ok) {
+        showSuccess('Сериал перемещён в «Брошено»')
+        await fetchSeries()
+      } else {
+        const err = await r.json().catch(() => ({}))
+        showError(err.error || 'Не удалось')
+      }
+    } catch {
+      showError('Ошибка')
+    } finally {
+      setDroppingId(null)
+    }
+  }
+
   const sorted = [...series].sort((a, b) => {
     switch (sortBy) {
       case 'name_asc': return getMovieName(a).localeCompare(getMovieName(b), 'ru')
@@ -132,20 +158,19 @@ export default function ElysiumMySeries() {
         </div>
       </div>
 
-      <div style={{ textAlign: 'center', margin: '0 0 25px' }}>
-        <Link
-          to="/elysium/planned-series"
-          className="my-series-btn"
-          style={{ textDecoration: 'none', display: 'inline-flex' }}
-        >
-          Буду смотреть →
-        </Link>
-      </div>
-
       {loading && series.length === 0 ? (
         <p className="my-series-empty">Загрузка...</p>
       ) : series.length === 0 ? (
-        <p className="my-series-empty">Нет сериалов в статусе «Смотрю».</p>
+        <div className="my-series-empty-block">
+          <p className="my-series-empty">Нет сериалов в статусе «Смотрю».</p>
+          <Link
+            to="/elysium/planned-series"
+            className="my-series-btn"
+            style={{ textDecoration: 'none', display: 'inline-flex' }}
+          >
+            Буду смотреть →
+          </Link>
+        </div>
       ) : (
         <div className="my-series-list">
           {sorted.map(show => (
@@ -169,14 +194,29 @@ export default function ElysiumMySeries() {
                       {show.nextEpisodeName || `Сезон ${show.nextSeason}, Серия ${show.nextEpisode}`}
                     </p>
                     <p className="my-series-next-meta">Сезон {show.nextSeason} · Серия {show.nextEpisode}</p>
-                    <button
-                      className="my-series-btn"
-                      onClick={() => handleMarkWatched(show, show.nextSeason, show.nextEpisode)}
-                      disabled={updatingId === show.kinopoiskId}
-                    >
-                      <Check size={16} />
-                      {updatingId === show.kinopoiskId ? 'Загрузка...' : 'Отметить'}
-                    </button>
+                    {(() => {
+                      const isBusy = updatingId === show.kinopoiskId || droppingId === show.kinopoiskId
+                      return (
+                        <div className="my-series-btn-group">
+                          <button
+                            className="my-series-btn-mark"
+                            onClick={() => handleMarkWatched(show, show.nextSeason, show.nextEpisode)}
+                            disabled={isBusy}
+                          >
+                            <Check size={16} />
+                            {updatingId === show.kinopoiskId ? 'Загрузка...' : 'Отметить'}
+                          </button>
+                          <button
+                            className="my-series-btn-dropped"
+                            onClick={() => handleDrop(show)}
+                            disabled={isBusy}
+                          >
+                            <X size={16} />
+                            {droppingId === show.kinopoiskId ? 'Загрузка...' : 'Перестал'}
+                          </button>
+                        </div>
+                      )
+                    })()}
                   </div>
                 ) : (
                   <p className="my-series-done">Все вышедшие просмотрены!</p>

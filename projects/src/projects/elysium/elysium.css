@@ -2732,6 +2732,73 @@ body {
   font-weight: 500;
 }
 
+/* Контейнер под две кнопки */
+.my-series-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* Зелёная "Отметить" */
+.my-series-btn-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgb(46, 204, 113);
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  min-height: 35px;
+}
+
+.my-series-btn-mark:hover:not(:disabled) {
+  background: rgb(39, 174, 96);
+}
+
+.my-series-btn-mark:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Красная "Перестал" — только рамка и текст */
+.my-series-btn-dropped {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: rgb(199, 0, 0);
+  border: 2px solid rgb(199, 0, 0);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  min-height: 35px;
+}
+
+.my-series-btn-dropped:hover:not(:disabled) {
+  background: rgba(199, 0, 0, 0.08);
+}
+
+.my-series-btn-dropped:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.my-series-empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
 
 /* ________________Import_______________ */
 
