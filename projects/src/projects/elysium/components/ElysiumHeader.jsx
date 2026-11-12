@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv, Film, PauseCircle } from 'lucide-react'
+import { House, Users, Sparkles, User, LogOut, Menu, X, Sun, Moon, Tv, Film, PauseCircle, Bookmark } from 'lucide-react'
 import { useAuth } from '../context/ElysiumAuthContext'
 import ElysiumNotificationsBell from './ElysiumNotificationsBell'
 import { useTheme } from '../../../context/ThemeContext'
@@ -68,6 +68,10 @@ export default function ElysiumHeader() {
           <>
             <NavLink to="/elysium/my-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
               <Tv />
+            </NavLink>
+
+            <NavLink to="/elysium/planned-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
+              <Bookmark />
             </NavLink>
 
             <NavLink to="/elysium/my-movies" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
@@ -165,6 +169,15 @@ export default function ElysiumHeader() {
               }>
                 <Tv size={20} />
                 <span>Мои сериалы</span>
+              </NavLink>
+
+              <NavLink to="/elysium/planned-series" className={({ isActive }) =>
+                isActive
+                  ? 'header-mobile-item header-mobile-item-active'
+                  : 'header-mobile-item'
+              }>
+                <Bookmark size={20} />
+                <span>Буду смотреть</span>
               </NavLink>
 
               <NavLink to="/elysium/my-movies" className={({ isActive }) =>

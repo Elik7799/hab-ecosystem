@@ -13,6 +13,7 @@ import ElysiumMySeries from './pages/MySeries'
 import ElysiumImport from './pages/Import'
 import ElysiumMyMovies from './pages/MyMovies'
 import ElysiumDroppedSeries from './pages/DroppedSeries'
+import ElysiumMySeriesPlanned from './pages/MySeriesPlanned'
 
 import './elysium.css'
 import './elysiumMobile.css'
@@ -36,6 +37,7 @@ function ElysiumApp() {
           <Route path="import" element={<ElysiumProtectedRoute><ElysiumImport /></ElysiumProtectedRoute>} />
           <Route path="my-movies" element={<ElysiumProtectedRoute><ElysiumMyMovies /></ElysiumProtectedRoute>} />
           <Route path="dropped-series" element={<ElysiumProtectedRoute><ElysiumDroppedSeries /></ElysiumProtectedRoute>} />
+          <Route path="planned-series" element={<ElysiumProtectedRoute><ElysiumMySeriesPlanned /></ElysiumProtectedRoute>} />
         </Routes>
       </main>
       <ElysiumFooter />
