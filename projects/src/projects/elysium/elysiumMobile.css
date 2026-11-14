@@ -86,19 +86,31 @@
         width: 140px;
     }
 
-    .main-moviesgrid {
-        gap: 10px;
+    .main-moviename {
+        font-size: 13px;
+    }
+
+    .main-movieyear {
+        font-size: 11px;
     }
 }
 
 @media (max-width: 480px) {
     .main-moviecard {
-        width: 120px;
-        height: 270px;
+        width: 99px;
+        height: 225px;
     }
 
     .main-movieposter {
-        width: 130px;
+        width: 99px;
+    }
+
+    .main-moviename {
+        font-size: 12px;
+    }
+
+    .main-movieyear {
+        font-size: 10px;
     }
 }
 
