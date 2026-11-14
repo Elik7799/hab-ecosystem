@@ -125,7 +125,13 @@ function pathTypeToDb(pt) {
 
 // ═════════════════════════ UPSERT ═════════════════════════
 
-async function upsertTmdbMovie(tmdbId, type) {
+async function upsertTmdbMovie(tmdbId, type, opts = {}) {
+  const {
+    skipRelations = false,
+    skipGenres = false,
+    skipCountries = false,
+  } = opts
+
   if (!['FILM', 'TV_SERIES'].includes(type)) {
     throw new Error(`Invalid movie type: ${type}`)
   }
@@ -167,31 +173,35 @@ async function upsertTmdbMovie(tmdbId, type) {
   `, [tmdbId, type, nameRu, nameOriginal, year, posterUrl, posterPreview,
     rating, description, filmLength, slogan, imdbId])
 
-  // Жанры
-  await pool.query('DELETE FROM movie_genres WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
-  for (const g of data.genres || []) {
-    await pool.query(
-      `INSERT INTO movie_genres (movie_id, movie_type, genre) VALUES ($1, $2, $3)
-       ON CONFLICT (movie_id, movie_type, genre) DO NOTHING`,
-      [tmdbId, type, g.name]
-    )
+  if (!skipGenres) {
+    await pool.query('DELETE FROM movie_genres WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
+    for (const g of data.genres || []) {
+      await pool.query(
+        `INSERT INTO movie_genres (movie_id, movie_type, genre) VALUES ($1, $2, $3)
+         ON CONFLICT (movie_id, movie_type, genre) DO NOTHING`,
+        [tmdbId, type, g.name]
+      )
+    }
   }
 
-  // Страны
-  await pool.query('DELETE FROM movie_countries WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
-  for (const c of data.production_countries || []) {
-    await pool.query(
-      `INSERT INTO movie_countries (movie_id, movie_type, country) VALUES ($1, $2, $3)
-       ON CONFLICT (movie_id, movie_type, country) DO NOTHING`,
-      [tmdbId, type, c.name]
-    )
+  if (!skipCountries) {
+    await pool.query('DELETE FROM movie_countries WHERE movie_id = $1 AND movie_type = $2', [tmdbId, type])
+    for (const c of data.production_countries || []) {
+      await pool.query(
+        `INSERT INTO movie_countries (movie_id, movie_type, country) VALUES ($1, $2, $3)
+         ON CONFLICT (movie_id, movie_type, country) DO NOTHING`,
+        [tmdbId, type, c.name]
+      )
+    }
   }
 
   if (isTV && data.seasons) {
     await syncTmdbSeasons(tmdbId, data.seasons)
   }
 
-  await syncMovieRelations(tmdbId, type)
+  if (!skipRelations) {
+    await syncMovieRelations(tmdbId, type)
+  }
 
   return { tmdbId, type, isTV }
 }
@@ -243,7 +253,11 @@ async function getEpisodesFromDb(tmdbId, type) {
 
   if (existing.rows.length === 0 || needsRefresh) {
     try {
-      await upsertTmdbMovie(tmdbId, type)
+      await upsertTmdbMovie(tmdbId, type, {
+        skipRelations: true,
+        skipGenres: true,
+        skipCountries: true,
+      })
       const fresh = await pool.query(
         `SELECT season_number, episode_number, name_ru, air_date as release_date
          FROM tmdb_episodes WHERE movie_id = $1 AND movie_type = $2
@@ -698,7 +712,6 @@ app.get('/api/kinopoisk/tv/:id/watched-episodes', authMiddleware, async (req, re
 // ═════════════════════════ EPISODES ═════════════════════════
 
 async function recalcStatus(tmdbId, userId, force = false) {
-  await getEpisodesFromDb(tmdbId, 'TV_SERIES')
   const res = await recalcUserSeriesStatus(userId, tmdbId, force)
   return res.newStatus
 }
@@ -903,7 +916,7 @@ async function getStatus(req, res, dbType) {
     let currentStatus = r.rows[0]?.status || 'not_watched'
 
     if (dbType === 'TV_SERIES' &&
-        (currentStatus === 'watching' || currentStatus === 'watched')) {
+      (currentStatus === 'watching' || currentStatus === 'watched')) {
       const res2 = await recalcUserSeriesStatus(userId, tmdbId)
       if (res2.changed) currentStatus = res2.newStatus
     }
@@ -1131,16 +1144,12 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
       ORDER BY um.id DESC
     `, [userId])
 
-    const series = []
-    for (const movie of movies.rows) {
+    const results = await Promise.all(movies.rows.map(async (movie) => {
       const episodes = await getEpisodesFromDb(movie.tmdbId, 'TV_SERIES')
       const aired = episodes.filter(e =>
         e.release_date ? new Date(e.release_date) <= new Date() : false
       )
-
-      if (aired.length === 0) {
-        continue
-      }
+      if (aired.length === 0) return null
 
       const watched = await pool.query(`
         SELECT season_number, episode_number FROM user_episodes
@@ -1158,7 +1167,7 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
             [userId, movie.tmdbId]
           )
         }
-        continue
+        return null
       }
 
       if (movie.status === 'watched') {
@@ -1176,7 +1185,7 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         }
       }
 
-      series.push({
+      return {
         ...movie,
         status: 'watching',
         nextSeason: next?.season_number ?? null,
@@ -1186,9 +1195,10 @@ app.get('/api/users/me/watching', authMiddleware, async (req, res) => {
         remaining: aired.length - watchedSet.size,
         totalAired: aired.length,
         watchedCount: watchedSet.size,
-      })
-    }
-    res.json({ series })
+      }
+    }))
+
+    res.json({ series: results.filter(Boolean) })
   } catch (err) {
     console.error('/users/me/watching:', err.message)
     res.status(500).json({ error: 'Ошибка' })

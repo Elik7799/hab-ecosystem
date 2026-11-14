@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
@@ -48,6 +48,8 @@ export default function ElysiumMySeries() {
   const [droppingId, setDroppingId] = useState(null)
   const [sortBy, setSortBy] = useState(() => localStorage.getItem('my-series-sort') || 'name_asc')
 
+  const pendingRef = useRef(new Set())
+
   useScrollRestore(SS.SCROLL, !loading)
 
   useEffect(() => { localStorage.setItem('my-series-sort', sortBy) }, [sortBy])
@@ -80,7 +82,23 @@ export default function ElysiumMySeries() {
   }, [token])
 
   const handleMarkWatched = async (show, season, episode) => {
+    if (pendingRef.current.has(show.kinopoiskId)) return
+    pendingRef.current.add(show.kinopoiskId)
     setUpdatingId(show.kinopoiskId)
+
+    setSeries(prev => prev.map(s => {
+      if (s.kinopoiskId !== show.kinopoiskId) return s
+      const newWatched = (s.watchedCount || 0) + 1
+      const newRemaining = Math.max(0, (s.remaining || 0) - 1)
+      return {
+        ...s,
+        watchedCount: newWatched,
+        remaining: newRemaining,
+        nextEpisode: newRemaining === 0 ? null : s.nextEpisode,
+        lastWatchedAt: new Date().toISOString(),
+      }
+    }))
+
     try {
       const r = await fetch(`${API_URL_BACKEND}/episodes/toggle`, {
         method: 'POST',
@@ -93,14 +111,27 @@ export default function ElysiumMySeries() {
       })
       if (r.ok) {
         showSuccess(`Серия ${season}x${episode} отмечена`)
-        await fetchSeries()
-      } else showError('Не удалось')
-    } catch { showError('Ошибка') }
-    finally { setUpdatingId(null) }
+      } else {
+        showError('Не удалось')
+      }
+      fetchSeries()
+    } catch {
+      showError('Ошибка')
+      fetchSeries()
+    } finally {
+      pendingRef.current.delete(show.kinopoiskId)
+      setUpdatingId(null)
+    }
   }
 
   const handleDrop = async (show) => {
+    if (pendingRef.current.has(show.kinopoiskId)) return
+    pendingRef.current.add(show.kinopoiskId)
     setDroppingId(show.kinopoiskId)
+
+    const snapshot = series
+    setSeries(prev => prev.filter(s => s.kinopoiskId !== show.kinopoiskId))
+
     try {
       const r = await fetch(`${API_URL_BACKEND}/movies/tv/${show.kinopoiskId}`, {
         method: 'POST',
@@ -112,14 +143,17 @@ export default function ElysiumMySeries() {
       })
       if (r.ok) {
         showSuccess('Сериал перемещён в «Брошено»')
-        await fetchSeries()
+        fetchSeries()
       } else {
         const err = await r.json().catch(() => ({}))
         showError(err.error || 'Не удалось')
+        setSeries(snapshot)
       }
     } catch {
       showError('Ошибка')
+      setSeries(snapshot)
     } finally {
+      pendingRef.current.delete(show.kinopoiskId)
       setDroppingId(null)
     }
   }
