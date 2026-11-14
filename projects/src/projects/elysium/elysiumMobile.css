@@ -78,7 +78,7 @@
 /* ________________Main___________________ */
 @media (max-width: 768px) {
     .main-moviecard {
-        width: 140px;
+        width: 120px;
         height: 285px;
     }
 
