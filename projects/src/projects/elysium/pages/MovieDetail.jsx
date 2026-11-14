@@ -165,7 +165,6 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
         showError(d.error || 'Не удалось сохранить')
         return
       }
-      // Сервер мог вернуть другой статус (например, watching → watched при автопереоценке)
       const data = await res.json()
       if (data?.status && data.status !== newStatus) {
         setStatus(data.status)
@@ -325,7 +324,6 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
 
               return STATUSES.map(s => {
                 if (isSeries && s.value === 'watched') {
-                  // Активный индикатор «Посмотрел», когда все вышедшие серии просмотрены
                   if (status === 'watched') {
                     return (
                       <button
@@ -362,9 +360,6 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
               }).concat(
                 isSeries ? [
                   (() => {
-                    // Когда сериал уже в watched — кнопку «Смотрю» не показываем:
-                    // всё просмотрено, нечего продолжать. Как только выйдут новые серии,
-                    // getStatus при заходе переведёт обратно в watching, и кнопка вернётся.
                     if (isWatchedFinal) return null
 
                     const disWatching = allAiredWatched

@@ -27,37 +27,32 @@ export default function BuckshotApp() {
     }
 
     const toggleShellState = (index) => {
-        // Нельзя менять уже выстрелившие патроны
         if (index < currentIndex) return
 
         const currentState = shells[index]
         let nextState = 'unknown'
 
-        // Считаем, сколько текущих меток
         const currentLiveMarks = shells.filter(s => s === 'live').length
         const currentBlankMarks = shells.filter(s => s === 'blank').length
 
-        // Правило 1: Если патрон неизвестен
         if (currentState === 'unknown') {
             if (currentLiveMarks < liveCount) {
-                nextState = 'live' // Есть места под боевые — ставим боевой
+                nextState = 'live'
             } else if (currentBlankMarks < blankCount) {
-                nextState = 'blank' // Боевых нет, но есть холостые — ставим холостой
+                nextState = 'blank'
             } else {
-                return // Лимиты исчерпаны
+                return
             }
         }
-        // Правило 2: Если патрон боевой
         else if (currentState === 'live') {
             if (currentBlankMarks < blankCount) {
-                nextState = 'blank' // Есть места под холостые — ставим холостой
+                nextState = 'blank'
             } else {
-                nextState = 'unknown' // Холостых нет — сбрасываем в неизвестное
+                nextState = 'unknown'
             }
         }
-        // Правило 3: Если патрон холостой
         else if (currentState === 'blank') {
-            nextState = 'unknown' // Всегда сбрасываем в неизвестное
+            nextState = 'unknown'
         }
 
         setShells((prev) => {
@@ -71,19 +66,15 @@ export default function BuckshotApp() {
         const currentShell = shells[currentIndex]
         if (!currentShell || currentShell === 'unknown') return
 
-        // Уменьшаем счетчики того, что выстрелилось
         if (currentShell === 'live') setLiveCount(prev => prev - 1)
         if (currentShell === 'blank') setBlankCount(prev => prev - 1)
 
-        // Удаляем выстреливший патрон из массива
         setShells((prev) => {
             const next = [...prev]
-            next.splice(currentIndex, 1) // Удаляем 1 элемент по текущему индексу
+            next.splice(currentIndex, 1)
             return next
         })
 
-        // Индекс текущего патрона остается тем же, 
-        // так как массив сдвинулся влево, и на это место встал следующий патрон.
     }
 
     const getProbabilities = () => {
@@ -116,7 +107,6 @@ export default function BuckshotApp() {
     const isCurrentShellUnknown = shells[currentIndex] === 'unknown' || !shells[currentIndex]
     const isGameOver = currentIndex >= shells.length
 
-    // Проверяем лимиты для тултипов
     const currentLiveMarks = shells.filter(s => s === 'live').length
     const currentBlankMarks = shells.filter(s => s === 'blank').length
     const canMarkLive = currentLiveMarks < liveCount

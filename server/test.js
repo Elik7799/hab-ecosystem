@@ -42,7 +42,6 @@ async function syncMovie(tmdbId) {
     const imdbId = data.external_ids?.imdb_id || null
     const type = isTV ? 'TV_SERIES' : 'FILM'
 
-    // Убрали tmdb_last_synced_at, оставили last_checked_at
     await pool.query(`
       UPDATE movies SET
         name_ru = $1, name_en = $2, name_original = $3, year = $4, type = $5,
@@ -93,7 +92,6 @@ async function syncMovie(tmdbId) {
 async function syncAll() {
   console.log('🚀 Запуск синхронизации пачкой по 150...')
   
-  // Берем 150 фильмов с самыми старыми датами (или NULL)
   const { rows } = await pool.query(`
     SELECT tmdb_id 
     FROM movies 
@@ -124,7 +122,7 @@ async function syncAll() {
       failed++ 
     }
 
-    await sleep(150) // Пауза между запросами
+    await sleep(150)
   }
 
   console.log(`\n🏁 Пачка завершена! ✅ ${success} / ❌ ${failed}`)

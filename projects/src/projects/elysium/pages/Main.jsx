@@ -71,7 +71,6 @@ export default function ElysiumMain() {
   const restoredFromStorage = useRef(movies.length > 0)
   const restoredSearchFromStorage = useRef(movies.length > 0 && isSearching && query.trim() !== '')
 
-  // Единый хук восстановления скролла — работает и с window, и с .app-main
   useScrollRestore(SCROLL_KEY, !loading)
 
   const fetchPopular = useCallback(async (pageNum, append = false) => {

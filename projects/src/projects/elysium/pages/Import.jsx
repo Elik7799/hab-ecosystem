@@ -17,7 +17,6 @@ export default function ElysiumImport() {
     const selected = e.target.files[0]
     if (!selected) return
 
-    // Проверка расширения
     const ext = selected.name.split('.').pop().toLowerCase()
     if (ext !== 'xlsx') {
       showError('Пожалуйста, выберите файл в формате .xlsx')

@@ -60,7 +60,6 @@ export default function ElysiumProfile() {
   const pageClamped = Math.min(Math.max(1, page), totalPages)
   const pageItems = movies.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
 
-  // Единый хук восстановления — работает и с window, и с overflow-контейнером
   useScrollRestore(profileId ? scrollKey(profileId) : null, !loading && !moviesLoading)
 
   useEffect(() => {
@@ -68,7 +67,6 @@ export default function ElysiumProfile() {
     sessionStorage.setItem(pageKey(profileId), String(page))
   }, [page, profileId])
 
-  // Загрузка профиля
   useEffect(() => {
     if (!token || !profileId) return
     (async () => {
@@ -88,7 +86,6 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId])
 
-  // Загрузка фильмов
   useEffect(() => {
     if (!token || !profileId) return
     (async () => {
@@ -102,7 +99,6 @@ export default function ElysiumProfile() {
     })()
   }, [token, profileId, filter])
 
-  // Клампим страницу — только после загрузки
   useEffect(() => {
     if (moviesLoading) return
     if (page !== pageClamped) setPage(pageClamped)

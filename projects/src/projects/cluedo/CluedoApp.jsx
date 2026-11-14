@@ -17,9 +17,6 @@ export default function CluedoApp() {
   const { theme, toggleTheme } = useTheme()
   const [playersCount, setPlayersCount] = useState(2)
 
-  // Имена для ОСТАЛЬНЫХ игроков (без "Я")
-  // playersCount = 2 → 1 имя (для второго игрока)
-  // playersCount = 6 → 5 имён
   const [otherPlayers, setOtherPlayers] = useState(Array(1).fill(''))
 
   const [cells, setCells] = useState({})
@@ -64,20 +61,16 @@ export default function CluedoApp() {
     const rect = e.currentTarget.getBoundingClientRect()
     const key = `${blockId}-${rowName}-${playerIndex}`
 
-    // Примерная высота попапа (в пикселях). У вас он с отступами и сеткой,
-    // поэтому берем с запасом — около 250px.
     const POPUP_HEIGHT = 200
     const SPACE_BELOW = window.innerHeight - rect.bottom
 
-    // Если места снизу меньше, чем высота попапа, открываем вверх
     const openAbove = SPACE_BELOW < POPUP_HEIGHT
 
     setPopup({
       key,
       x: rect.left + rect.width / 2,
-      // Если открываем вверх, отнимаем высоту попапа от верхней границы ячейки
       y: openAbove ? rect.top - POPUP_HEIGHT : rect.bottom + 8,
-      openAbove, // передаем флаг, чтобы можно было стилизовать (необязательно)
+      openAbove,
       currentValue: cells[key] || '',
     })
   }

@@ -8,7 +8,6 @@ export function getMovieYear(movie) {
   return movie.year || ''
 }
 
-// Для сборки URL в клиенте
 export function getMoviePath(movie) {
   if (!movie) return null
   const id = movie.kinopoiskId ?? movie.tmdbId
@@ -18,7 +17,6 @@ export function getMoviePath(movie) {
     : `/elysium/movie/${id}`
 }
 
-// Обратное: путь типа из DB-type
 export function dbTypeToPathType(dbType) {
   return dbType === 'TV_SERIES' ? 'tv' : 'movie'
 }
