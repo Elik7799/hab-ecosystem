@@ -3,6 +3,7 @@
   --dop: rgb(255, 255, 255);
   --middle: #16161c;
   --middleSK: #222230;
+  --dropped: #1e1e1e;
 }
 
 [data-theme='light'] {
@@ -10,6 +11,7 @@
   --dop: rgb(0, 0, 0);
   --middle: #e4e4e4;
   --middleSK: #efefef;
+  --dropped: #cbcbcb;
 }
 
 * {

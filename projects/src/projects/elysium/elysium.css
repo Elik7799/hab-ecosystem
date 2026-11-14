@@ -528,7 +528,7 @@ body {
 }
 
 .main-moviecard.status-dropped {
-  background-color: rgba(0, 0, 0, 0.15);
+  background-color: var(--dropped);
 }
 
 .main-category-row {
@@ -826,7 +826,7 @@ body {
 }
 
 .moviedetail-moviecard.status-dropped {
-  background-color: rgba(0, 0, 0, 0.15);
+  background-color: var(--dropped);
 }
 
 .moviedetail-seasons {
@@ -1956,7 +1956,7 @@ body {
 }
 
 .profile-moviecard.status-dropped {
-  background-color: rgba(0, 0, 0, 0.15);
+  background-color: var(--dropped);
 }
 
 /* ________________ Notifications ________________ */
