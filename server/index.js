@@ -716,13 +716,6 @@ async function recalcStatus(tmdbId, userId, force = false) {
   return res.newStatus
 }
 
-/**
- * Пересчитывает статус конкретного (user, series) без внешних запросов в TMDB.
- * Работает только если episodes уже в БД (tmdb_episodes).
- * Возвращает { changed, newStatus, oldStatus }.
- * - dropped / want_to_watch / not_watched — не трогает
- * - watching / watched — переоценивает (aired vs watched)
- */
 async function recalcUserSeriesStatus(userId, tmdbId, force = false) {
   const cur = await pool.query(
     `SELECT status FROM user_movies
@@ -749,6 +742,7 @@ async function recalcUserSeriesStatus(userId, tmdbId, force = false) {
   )
   const watchedCount = watched.rows[0].c
 
+  // ── FORCE: Пользователь только что поставил отметку ──
   if (force && watchedCount > 0) {
     const newStatus = (airedCount > 0 && watchedCount >= airedCount)
       ? 'watched'
@@ -767,25 +761,28 @@ async function recalcUserSeriesStatus(userId, tmdbId, force = false) {
     return { changed: true, newStatus, oldStatus }
   }
 
+  // ── Уважаем ручные статусы ──
   if (oldStatus === 'dropped' || oldStatus === 'want_to_watch' || oldStatus === 'not_watched') {
     return { changed: false, newStatus: oldStatus, oldStatus }
   }
+  
   if (cur.rows.length === 0) {
     return { changed: false, newStatus: 'not_watched', oldStatus: 'not_watched' }
   }
 
+  // ── ГЛАВНЫЙ ФИКС ──
+  // Если ни одна серия не отмечена, НЕ сбрасываем в not_watched, 
+  // а оставляем статус, каким он был (например, watching).
+  if (watchedCount === 0) {
+    return { changed: false, newStatus: oldStatus, oldStatus }
+  }
+
+  // ── Если отмечены какие-то серии ──
   let newStatus = oldStatus
   if (airedCount > 0 && watchedCount >= airedCount) {
     newStatus = 'watched'
   } else if (airedCount > 0 && watchedCount > 0 && watchedCount < airedCount) {
     newStatus = 'watching'
-  } else if (watchedCount === 0 && airedCount > 0) {
-    await pool.query(
-      `DELETE FROM user_movies
-       WHERE user_id = $1 AND movie_id = $2 AND movie_type = 'TV_SERIES'`,
-      [userId, tmdbId]
-    )
-    return { changed: true, newStatus: 'not_watched', oldStatus }
   }
 
   if (newStatus !== oldStatus) {
@@ -798,7 +795,6 @@ async function recalcUserSeriesStatus(userId, tmdbId, force = false) {
   }
   return { changed: false, newStatus: oldStatus, oldStatus }
 }
-
 /**
  * Пересчитывает статусы ВСЕХ пользователей, у которых сериал в watching/watched.
  * Используется в таргетированном батче после глобального обновления.
