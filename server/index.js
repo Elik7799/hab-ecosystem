@@ -1927,11 +1927,11 @@ async function checkAndUpdateOnStartup() {
     const r = await pool.query('SELECT MAX(last_checked_at_all) AS lu FROM movies')
     const last = r.rows[0]?.lu
     const now = Date.now()
-    let batch = 41
+    let batch = 20
 
     if (!last) {
-      console.log('🕒 Фон. обновление: никогда не запускалось → batch=984')
-      batch = 984
+      console.log('🕒 Фон. обновление: никогда не запускалось → batch=500')
+      batch = 500
     } else {
       const dh = (now - new Date(last).getTime()) / (1000 * 60 * 60)
       console.log(`🕒 Фон. обновление: последнее было ${dh.toFixed(2)}ч назад`)
@@ -1940,11 +1940,11 @@ async function checkAndUpdateOnStartup() {
         return
       }
       if (dh >= 24) {
-        batch = 984
+        batch = 500
         console.log(`🕒 Прошло ≥ 24ч → batch=984`)
       } else {
-        batch = Math.min(984, Math.floor(dh * 41))
-        console.log(`🕒 batch=${batch} (${dh.toFixed(2)}ч × 41)`)
+        batch = Math.min(500, Math.floor(dh * 20))
+        console.log(`🕒 batch=${batch} (${dh.toFixed(2)}ч × 20)`)
       }
     }
     await updateOldMovies(batch)
