@@ -116,41 +116,45 @@
 
 /* ________________Profile___________________ */
 @media (max-width: 768px) {
-    .profile-moviecard {
-        width: 140px;
-        height: 285px;
-    }
+  .profile-moviecard {
+    width: 140px;
+    height: 320px;
+  }
 
-    .profile-movieposter {
-        width: 140px;
-    }
+  .profile-movieposter {
+    width: 140px;
+  }
 
-    .profile-moviename {
-        font-size: 13px;
-    }
+  .profile-moviename {
+    font-size: 13px;
+  }
 
-    .profile-movieyear {
-        font-size: 11px;
-    }
+  .profile-movieyear {
+    font-size: 11px;
+  }
 }
 
 @media (max-width: 480px) {
-    .profile-moviecard {
-        width: 99px;
-        height: 225px;
-    }
+  .profile-moviecard {
+    width: 99px;
+    height: 240px;
+  }
 
-    .profile-movieposter {
-        width: 99px;
-    }
+  .profile-movieposter {
+    width: 99px;
+  }
 
-    .profile-moviename {
-        font-size: 12px;
-    }
+  .profile-moviename {
+    font-size: 12px;
+  }
 
-    .profile-movieyear {
-        font-size: 10px;
-    }
+  .profile-movieyear {
+    font-size: 10px;
+  }
+
+  .profile-moviestatus {
+    font-size: 10px;
+  }
 }
 
 /* ________________MovieDetail___________________ */
