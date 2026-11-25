@@ -207,7 +207,7 @@ export default function ElysiumMySeriesPlanned() {
                 ← Назад
               </button>
               <span className="my-series-page-info">
-                Страница {pageClamped} из {totalPages}
+                {pageClamped} из {totalPages}
               </span>
               <button
                 type="button"

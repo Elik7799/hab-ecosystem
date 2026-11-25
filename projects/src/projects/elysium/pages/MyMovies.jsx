@@ -285,7 +285,7 @@ export default function ElysiumMyMovies() {
                 <ChevronLeft size={16} /> Назад
               </button>
               <span className="my-series-page-info">
-                Страница {pageClamped} из {totalPages}
+                {pageClamped} из {totalPages}
               </span>
               <button
                 type="button"
