@@ -1747,6 +1747,48 @@ app.patch('/api/match/rooms/:id/cancel', authMiddleware, async (req, res) => {
   } catch { res.status(500).json({ error: 'Ошибка' }) }
 })
 
+// ═════════════════════════ MATCH ROOM CLEANUP ═════════════════════════
+
+async function cleanupOldMatchRooms() {
+  try {
+    const r = await pool.query(`
+      DELETE FROM match_rooms
+      WHERE created_at < NOW() - INTERVAL '7 days'
+         OR created_at IS NULL
+      RETURNING id
+    `)
+    
+    if (r.rows.length > 0) {
+      console.log(`🧹 Match cleanup: удалено ${r.rows.length} старых комнат (и все связанные данные)`)
+    } else {
+      console.log('🧹 Match cleanup: старых комнат нет')
+    }
+  } catch (err) {
+    console.error('cleanupOldMatchRooms:', err.message)
+  }
+}
+
+// ═════════════════════════ NOTIFICATIONS CLEANUP ═════════════════════════
+
+async function cleanupOldNotifications() {
+  try {
+    const r = await pool.query(`
+      DELETE FROM notifications
+      WHERE created_at < NOW() - INTERVAL '30 days'
+         OR created_at IS NULL
+      RETURNING id
+    `)
+
+    if (r.rows.length > 0) {
+      console.log(`🧹 Notifications cleanup: удалено ${r.rows.length} старых уведомлений`)
+    } else {
+      console.log('🧹 Notifications cleanup: старых уведомлений нет')
+    }
+  } catch (err) {
+    console.error('cleanupOldNotifications:', err.message)
+  }
+}
+
 // ═════════════════════════ HYDRATE USER_MOVIES ═════════════════════════
 
 /**
@@ -1942,6 +1984,8 @@ async function checkAndUpdateOnStartup() {
 }
 
 setTimeout(async () => {
+  await cleanupOldNotifications()
+  await cleanupOldMatchRooms() 
   await ensureUserMoviesExist()
   await checkAndUpdateOnStartup()
 }, 10000)

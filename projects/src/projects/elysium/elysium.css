@@ -21,6 +21,8 @@ body {
 .app-main {
   flex: 1;
   background-color: var(--leader);
+  display: flex;
+  justify-content: center;
 }
 
 /* ________________Header_______________ */
