@@ -7,7 +7,7 @@ import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
 import { ArrowDownUp, Play, Star } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
-const PAGE_SIZE = 12
+const PAGE_SIZE = 10
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'По названию (А-Я)' },

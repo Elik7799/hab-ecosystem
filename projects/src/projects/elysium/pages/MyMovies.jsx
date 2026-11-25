@@ -7,7 +7,7 @@ import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
 import { Check, ArrowDownUp, Clock, Star, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 const SESSION_KEY = 'my-movies-session-active'
 const SCROLL_KEY = 'my-movies-scroll'

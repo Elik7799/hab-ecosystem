@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
-import { useScrollRestore } from '../../../utils/ElysiumScroll'
-import { Check, ArrowDownUp, X } from 'lucide-react'
+import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
+import { Check, ArrowDownUp, X, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
+const PAGE_SIZE = 10
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'По названию (А-Я)' },
@@ -23,6 +24,8 @@ const SORT_OPTIONS = [
 const SS = {
   SCROLL: 'my-series-scroll-y',
   CACHE: 'my-series-watching-cache',
+  PAGE: 'my-series-page',
+  SORT: 'my-series-sort',
 }
 
 function readCache() {
@@ -39,6 +42,11 @@ function writeCache(data) {
   } catch { }
 }
 
+function readSavedPage() {
+  const p = Number(localStorage.getItem(SS.PAGE))
+  return Number.isFinite(p) && p >= 1 ? p : 1
+}
+
 export default function ElysiumMySeries() {
   const { token } = useAuth()
 
@@ -46,11 +54,13 @@ export default function ElysiumMySeries() {
   const [loading, setLoading] = useState(() => readCache() == null)
   const [updatingId, setUpdatingId] = useState(null)
   const [droppingId, setDroppingId] = useState(null)
-  const [sortBy, setSortBy] = useState(() => localStorage.getItem('my-series-sort') || 'name_asc')
+  const [sortBy, setSortBy] = useState(() => localStorage.getItem(SS.SORT) || 'name_asc')
+  const [page, setPage] = useState(readSavedPage)
 
   useScrollRestore(SS.SCROLL, !loading)
 
-  useEffect(() => { localStorage.setItem('my-series-sort', sortBy) }, [sortBy])
+  useEffect(() => { localStorage.setItem(SS.SORT, sortBy) }, [sortBy])
+  useEffect(() => { localStorage.setItem(SS.PAGE, String(page)) }, [page])
 
   const fetchSeries = async () => {
     if (!token) return
@@ -143,6 +153,28 @@ export default function ElysiumMySeries() {
     }
   })
 
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const pageClamped = Math.min(Math.max(1, page), totalPages)
+  const pageItems = sorted.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE)
+
+  useEffect(() => {
+    if (loading) return
+    if (page !== pageClamped) setPage(pageClamped)
+  }, [page, pageClamped, loading])
+
+  const handleSortChange = (value) => {
+    setSortBy(value)
+    setPage(1)
+    scrollToTop()
+    sessionStorage.setItem(SS.SCROLL, '0')
+  }
+
+  const handlePageChange = (next) => {
+    setPage(next)
+    scrollToTop()
+    sessionStorage.setItem(SS.SCROLL, '0')
+  }
+
   return (
     <div className="my-series-body">
       <div className="my-series-header-row">
@@ -152,7 +184,11 @@ export default function ElysiumMySeries() {
         </div>
         <div className="my-series-sort">
           <ArrowDownUp size={16} />
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="my-series-sort-select">
+          <select
+            value={sortBy}
+            onChange={e => handleSortChange(e.target.value)}
+            className="my-series-sort-select"
+          >
             {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
@@ -172,70 +208,96 @@ export default function ElysiumMySeries() {
           </Link>
         </div>
       ) : (
-        <div className="my-series-list">
-          {sorted.map(show => (
-            <div key={show.kinopoiskId} className="my-series-card">
-              <Link to={getMoviePath(show)}>
-                <img
-                  src={show.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
-                  alt={getMovieName(show)}
-                  className="my-series-poster"
-                  onError={e => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
-                />
-              </Link>
-              <div className="my-series-info">
-                <Link to={getMoviePath(show)} className="my-series-name">{getMovieName(show)}</Link>
-                {show.totalAired === 0 ? (
-                  <p className="my-series-done" style={{ color: '#888' }}>Серии ещё не вышли</p>
-                ) : show.nextEpisode ? (
-                  <div className="my-series-next">
-                    <p className="my-series-next-label">Следующая серия:</p>
-                    <p className="my-series-next-title">
-                      {show.nextEpisodeName || `Сезон ${show.nextSeason}, Серия ${show.nextEpisode}`}
-                    </p>
-                    <p className="my-series-next-meta">Сезон {show.nextSeason} · Серия {show.nextEpisode}</p>
-                    {(() => {
-                      const isBusy = updatingId === show.kinopoiskId || droppingId === show.kinopoiskId
-                      return (
-                        <div className="my-series-btn-group">
-                          <button
-                            className="my-series-btn-mark"
-                            onClick={() => handleMarkWatched(show, show.nextSeason, show.nextEpisode)}
-                            disabled={isBusy}
-                          >
-                            <Check size={16} />
-                            {updatingId === show.kinopoiskId ? 'Загрузка...' : 'Отметить'}
-                          </button>
-                          <button
-                            className="my-series-btn-dropped"
-                            onClick={() => handleDrop(show)}
-                            disabled={isBusy}
-                          >
-                            <X size={16} />
-                            {droppingId === show.kinopoiskId ? 'Загрузка...' : 'Перестал'}
-                          </button>
-                        </div>
-                      )
-                    })()}
+        <>
+          <div className="my-series-list">
+            {pageItems.map(show => (
+              <div key={show.kinopoiskId} className="my-series-card">
+                <Link to={getMoviePath(show)}>
+                  <img
+                    src={show.posterUrlPreview || 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png'}
+                    alt={getMovieName(show)}
+                    className="my-series-poster"
+                    onError={e => { e.target.src = 'https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.png' }}
+                  />
+                </Link>
+                <div className="my-series-info">
+                  <Link to={getMoviePath(show)} className="my-series-name">{getMovieName(show)}</Link>
+                  {show.totalAired === 0 ? (
+                    <p className="my-series-done" style={{ color: '#888' }}>Серии ещё не вышли</p>
+                  ) : show.nextEpisode ? (
+                    <div className="my-series-next">
+                      <p className="my-series-next-label">Следующая серия:</p>
+                      <p className="my-series-next-title">
+                        {show.nextEpisodeName || `Сезон ${show.nextSeason}, Серия ${show.nextEpisode}`}
+                      </p>
+                      <p className="my-series-next-meta">Сезон {show.nextSeason} · Серия {show.nextEpisode}</p>
+                      {(() => {
+                        const isBusy = updatingId === show.kinopoiskId || droppingId === show.kinopoiskId
+                        return (
+                          <div className="my-series-btn-group">
+                            <button
+                              className="my-series-btn-mark"
+                              onClick={() => handleMarkWatched(show, show.nextSeason, show.nextEpisode)}
+                              disabled={isBusy}
+                            >
+                              <Check size={16} />
+                              {updatingId === show.kinopoiskId ? 'Загрузка...' : 'Отметить'}
+                            </button>
+                            <button
+                              className="my-series-btn-dropped"
+                              onClick={() => handleDrop(show)}
+                              disabled={isBusy}
+                            >
+                              <X size={16} />
+                              {droppingId === show.kinopoiskId ? 'Загрузка...' : 'Перестал'}
+                            </button>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  ) : (
+                    <p className="my-series-done">Все вышедшие просмотрены!</p>
+                  )}
+                </div>
+                <div className="my-series-stats">
+                  <div className="my-series-stat">
+                    <span className="my-series-stat-value">{show.remaining}</span>
+                    <span className="my-series-stat-label">осталось</span>
                   </div>
-                ) : (
-                  <p className="my-series-done">Все вышедшие просмотрены!</p>
-                )}
-              </div>
-              <div className="my-series-stats">
-                <div className="my-series-stat">
-                  <span className="my-series-stat-value">{show.remaining}</span>
-                  <span className="my-series-stat-label">осталось</span>
+                  <div className="my-series-progress-bar">
+                    <div className="my-series-progress-fill" style={{ width: `${(show.watchedCount / (show.totalAired || 1)) * 100}%` }} />
+                  </div>
+                  <span className="my-series-progress-text">{show.watchedCount} из {show.totalAired}</span>
                 </div>
-                <div className="my-series-progress-bar">
-                  <div className="my-series-progress-fill" style={{ width: `${(show.watchedCount / (show.totalAired || 1)) * 100}%` }} />
-                </div>
-                <span className="my-series-progress-text">{show.watchedCount} из {show.totalAired}</span>
               </div>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="my-series-pagination">
+              <button
+                type="button"
+                className="my-series-page-btn"
+                onClick={() => handlePageChange(Math.max(1, pageClamped - 1))}
+                disabled={pageClamped === 1}
+              >
+                <ChevronLeft size={16} /> Назад
+              </button>
+              <span className="my-series-page-info">
+                {pageClamped} из {totalPages}
+              </span>
+              <button
+                type="button"
+                className="my-series-page-btn"
+                onClick={() => handlePageChange(Math.min(totalPages, pageClamped + 1))}
+                disabled={pageClamped === totalPages}
+              >
+                Вперёд <ChevronRight size={16} />
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   )
-} 
+}

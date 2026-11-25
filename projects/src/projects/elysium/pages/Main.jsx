@@ -7,7 +7,7 @@ import { showError } from '../../../utils/ElysiumToast'
 import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
-const PAGE_SIZE = 20
+const PAGE_SIZE = 21
 
 const CATEGORIES = [
   { value: 'MARVEL', label: 'Киновселенная MARVEL' },
