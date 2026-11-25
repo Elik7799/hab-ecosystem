@@ -8,7 +8,7 @@ import { useScrollRestore, scrollToTop } from '../../../utils/ElysiumScroll'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
-const PAGE_SIZE = 20
+const PAGE_SIZE = 21
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Все' },
