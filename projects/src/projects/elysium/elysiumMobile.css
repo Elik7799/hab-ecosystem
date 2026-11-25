@@ -77,6 +77,10 @@
 
 /* ________________Main___________________ */
 @media (max-width: 768px) {
+    .main-body {
+        max-width: 634px;
+    }
+
     .main-moviecard {
         width: 140px;
         height: 285px;
@@ -96,6 +100,10 @@
 }
 
 @media (max-width: 480px) {
+    .main-body {
+        max-width: 360px;
+    }
+
     .main-moviecard {
         width: 99px;
         height: 225px;

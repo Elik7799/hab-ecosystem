@@ -19,9 +19,9 @@ const STATUS_FILTERS = [
 ]
 
 const STATUS_LABELS = {
-  watching: 'Смотрю',
+  watching: 'Смотрит',
   watched: 'Посмотрел',
-  want_to_watch: 'Буду',
+  want_to_watch: 'Будет',
   dropped: 'Перестал',
 }
 
