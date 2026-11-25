@@ -12,17 +12,17 @@ const PAGE_SIZE = 20
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Все' },
-  { value: 'watching', label: 'Смотрю' },
+  { value: 'watching', label: 'Смотрит' },
   { value: 'watched', label: 'Посмотрел' },
-  { value: 'want_to_watch', label: 'Буду смотреть' },
-  { value: 'dropped', label: 'Перестал смотреть' },
+  { value: 'want_to_watch', label: 'Будет' },
+  { value: 'dropped', label: 'Перестал' },
 ]
 
 const STATUS_LABELS = {
   watching: 'Смотрю',
   watched: 'Посмотрел',
-  want_to_watch: 'Буду смотреть',
-  dropped: 'Перестал смотреть',
+  want_to_watch: 'Буду',
+  dropped: 'Перестал',
 }
 
 const scrollKey = (pid) => `profile-scroll-${pid}`
@@ -228,7 +228,7 @@ export default function ElysiumProfile() {
         </div>
         <div className="profile-stat">
           <span className="profile-stat-value">{stats.want_to_watch}</span>
-          <span className="profile-stat-label">Буду смотреть</span>
+          <span className="profile-stat-label">Будет смотреть</span>
         </div>
         <div className="profile-stat">
           <span className="profile-stat-value">{stats.friends}</span>
