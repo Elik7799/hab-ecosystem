@@ -350,7 +350,7 @@ body {
 .main-body {
   width: 100%;
   margin: 0;
-  padding: 10px 10px;
+  padding: 10px 0px;
   max-width: 1520px;
 }
 
