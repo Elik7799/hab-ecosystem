@@ -10,8 +10,8 @@ const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 const PAGE_SIZE = 21
 
 const CATEGORIES = [
-  { value: 'MARVEL', label: 'Киновселенная MARVEL' },
   { value: 'TOP_POPULAR_ALL', label: 'Популярное (все)' },
+  { value: 'MARVEL', label: 'Киновселенная MARVEL' },
   { value: 'TOP_POPULAR_MOVIES', label: 'Популярные фильмы' },
   { value: 'POPULAR_SERIES', label: 'Популярные сериалы' },
   { value: 'TOP_250_TV_SHOWS', label: 'Топ 250 сериалов' },
