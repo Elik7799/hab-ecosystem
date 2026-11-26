@@ -75,39 +75,41 @@ export default function ElysiumMain() {
     if (!token || currentMovies.length === 0) return
 
     try {
-      const refs = currentMovies.map(m => ({ 
-        tmdbId: m.tmdbId || m.kinopoiskId, 
-        type: m.type 
+      const refs = currentMovies.map(m => ({
+        tmdbId: m.tmdbId || m.kinopoiskId,
+        type: m.type
       }))
       const res = await fetch(`${API_URL_BACKEND}/movies/bulk-statuses`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${token}` 
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ refs })
       })
       if (res.ok) {
         const data = await res.json()
         const statuses = data.statuses || {}
-        
+
         setMovies(prev => {
           let changed = false
           const next = prev.map(m => {
             const key = `${m.tmdbId || m.kinopoiskId}:${m.type}`
-            // Если статус изменился — обновляем
-            if (statuses[key] && statuses[key] !== m.status) {
+
+            // ГЛАВНОЕ ИСПРАВЛЕНИЕ: если статуса нет в ответе, значит он сброшен в not_watched
+            const newStatus = statuses[key] || 'not_watched'
+
+            if (newStatus !== m.status) {
               changed = true
-              return { ...m, status: statuses[key] }
+              return { ...m, status: newStatus }
             }
             return m
           })
-          // Возвращаем новый массив только если реально были изменения, чтобы избежать лишних рендеров
           return changed ? next : prev
         })
       }
     } catch {
-      // Тихо игнорируем ошибки, чтобы не мешать пользователю
+      // Тихо игнорируем ошибки
     }
   }, [token])
 
@@ -129,9 +131,9 @@ export default function ElysiumMain() {
       )
       if (!res.ok) throw new Error('Ошибка')
       const data = await res.json()
-      
+
       const items = data.items || []
-      
+
       append ? setMovies(p => [...p, ...items]) : setMovies(items)
       setPage(data.page || pageNum)
       setHasMore(data.hasMore || false)
@@ -200,18 +202,18 @@ export default function ElysiumMain() {
   }, [query, isSearching, searchMovies, fetchPopular])
 
   const handleSearchChange = (e) => { setQuery(e.target.value); setIsSearching(true) }
-  
+
   const handleClearSearch = () => {
-    setQuery(''); 
-    setIsSearching(false); 
+    setQuery('');
+    setIsSearching(false);
     setCategory('MARVEL')
-    localStorage.removeItem('main-query'); 
+    localStorage.removeItem('main-query');
     localStorage.removeItem('main-is-searching')
     sessionStorage.removeItem(SCROLL_KEY)
     scrollToTop()
     fetchPopular(1, false)
   }
-  
+
   const handleLoadMore = () => { if (!loadingMore && hasMore) fetchPopular(page + 1, true) }
 
   const categoryName = CATEGORIES.find(c => c.value === category)?.label || 'Киновселенная MARVEL'
