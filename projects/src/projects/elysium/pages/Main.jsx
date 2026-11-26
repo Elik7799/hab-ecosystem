@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { MovieGridSkeleton } from '../components/ElysiumSkeleton'
@@ -32,6 +32,8 @@ function readSavedMovies() {
 
 export default function ElysiumMain() {
   const { token } = useAuth()
+  const location = useLocation()
+
   useEffect(() => { sessionStorage.setItem(SESSION_KEY, 'true') }, [])
 
   const [query, setQuery] = useState(() =>
@@ -61,7 +63,60 @@ export default function ElysiumMain() {
   const restoredFromStorage = useRef(movies.length > 0)
   const restoredSearchFromStorage = useRef(movies.length > 0 && isSearching && query.trim() !== '')
 
+  // Ссылка на актуальные movies для избежания лишних пересозданий функций
+  const moviesRef = useRef(movies)
+  useEffect(() => { moviesRef.current = movies }, [movies])
+
   useScrollRestore(SCROLL_KEY, !loading)
+
+  // --- НОВАЯ ФУНКЦИЯ: Тихое обновление статусов ---
+  const refreshStatuses = useCallback(async () => {
+    const currentMovies = moviesRef.current
+    if (!token || currentMovies.length === 0) return
+
+    try {
+      const refs = currentMovies.map(m => ({ 
+        tmdbId: m.tmdbId || m.kinopoiskId, 
+        type: m.type 
+      }))
+      const res = await fetch(`${API_URL_BACKEND}/movies/bulk-statuses`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ refs })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const statuses = data.statuses || {}
+        
+        setMovies(prev => {
+          let changed = false
+          const next = prev.map(m => {
+            const key = `${m.tmdbId || m.kinopoiskId}:${m.type}`
+            // Если статус изменился — обновляем
+            if (statuses[key] && statuses[key] !== m.status) {
+              changed = true
+              return { ...m, status: statuses[key] }
+            }
+            return m
+          })
+          // Возвращаем новый массив только если реально были изменения, чтобы избежать лишних рендеров
+          return changed ? next : prev
+        })
+      }
+    } catch {
+      // Тихо игнорируем ошибки, чтобы не мешать пользователю
+    }
+  }, [token])
+
+  // Эффект, который срабатывает при возврате на страницу (location.key меняется при переходах)
+  useEffect(() => {
+    refreshStatuses()
+  }, [location.key, refreshStatuses])
+
+  // --- КОНЕЦ НОВОГО БЛОКА ---
 
   const fetchPopular = useCallback(async (pageNum, append = false) => {
     if (!token) return

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, Link, useLocation } from 'react-router-dom' // <-- Добавлен useLocation
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName, getMoviePath } from '../../../utils/ElysiumMovieName'
 import { ProfileSkeleton } from '../components/ElysiumSkeleton'
@@ -27,28 +27,52 @@ const STATUS_LABELS = {
 
 const scrollKey = (pid) => `profile-scroll-${pid}`
 const pageKey = (pid) => `profile-page-${pid}`
+const filterKey = (pid) => `profile-filter-${pid}`
+const dataKey = (pid) => `profile-data-${pid}`
+const statsKey = (pid) => `profile-stats-${pid}`
+const moviesCacheKey = (pid, f) => `profile-movies-${pid}-${f}`
 
 export default function ElysiumProfile() {
   const { id } = useParams()
   const { token, user: currentUser } = useAuth()
+  const location = useLocation() // <-- Следим за переходами
 
-  const [profile, setProfile] = useState(null)
-  const [stats, setStats] = useState(null)
+  const profileId = id || currentUser?.id
+
+  // Инициализируем состояния из кэша, чтобы при возврате не было скелетона
+  const [profile, setProfile] = useState(() => {
+    if (!profileId) return null
+    const c = sessionStorage.getItem(dataKey(profileId))
+    return c ? JSON.parse(c) : null
+  })
+  const [stats, setStats] = useState(() => {
+    if (!profileId) return null
+    const c = sessionStorage.getItem(statsKey(profileId))
+    return c ? JSON.parse(c) : null
+  })
+  const [loading, setLoading] = useState(() => !profile)
+
+  const [filter, setFilter] = useState(() => {
+    if (!profileId) return 'all'
+    return sessionStorage.getItem(filterKey(profileId)) || 'all'
+  })
+  const [movies, setMovies] = useState(() => {
+    if (!profileId) return []
+    const f = sessionStorage.getItem(filterKey(profileId)) || 'all'
+    const c = sessionStorage.getItem(moviesCacheKey(profileId, f))
+    return c ? JSON.parse(c) : []
+  })
+  const [moviesLoading, setMoviesLoading] = useState(() => movies.length === 0)
+
   const [isFriend, setIsFriend] = useState(false)
   const [friendshipStatus, setFriendshipStatus] = useState('none')
   const [friendshipId, setFriendshipId] = useState(null)
   const [isOwn, setIsOwn] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const [movies, setMovies] = useState([])
-  const [filter, setFilter] = useState('all')
-  const [moviesLoading, setMoviesLoading] = useState(true)
   const [commonMovies, setCommonMovies] = useState([])
   const [showCommon, setShowCommon] = useState(false)
-
-  const profileId = id || currentUser?.id
 
   const [page, setPage] = useState(() => {
     if (!profileId) return 1
@@ -67,35 +91,59 @@ export default function ElysiumProfile() {
     sessionStorage.setItem(pageKey(profileId), String(page))
   }, [page, profileId])
 
+  // Загрузка профиля (с проверкой кэша)
   useEffect(() => {
     if (!token || !profileId) return
-    (async () => {
-      setLoading(true); setError('')
+    
+    // Если профиля нет в кэше, показываем загрузку
+    if (!profile) setLoading(true)
+    
+    ;(async () => {
       try {
         const r = await fetch(`${API_URL_BACKEND}/users/${profileId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         const d = await r.json()
         if (!r.ok) { setError(d.error || 'Не найден'); return }
-        setProfile(d.user); setStats(d.stats)
-        setIsFriend(d.isFriend); setFriendshipStatus(d.friendshipStatus || 'none')
-        setFriendshipId(d.friendshipId || null); setIsOwn(d.isOwn)
+        
+        setProfile(d.user)
+        setStats(d.stats)
+        setIsFriend(d.isFriend)
+        setFriendshipStatus(d.friendshipStatus || 'none')
+        setFriendshipId(d.friendshipId || null)
+        setIsOwn(d.isOwn)
+
+        // Сохраняем в кэш
+        sessionStorage.setItem(dataKey(profileId), JSON.stringify(d.user))
+        sessionStorage.setItem(statsKey(profileId), JSON.stringify(d.stats))
       } catch {
         setError('Не удалось загрузить профиль'); showError('Ошибка')
-      } finally { setLoading(false) }
+      } finally {
+        setLoading(false)
+      }
     })()
-  }, [token, profileId])
+  }, [token, profileId]) // Эффект сработает при монтировании, но не сбросит скролл, если данные в кэше
 
+  // Загрузка фильмов профиля
   useEffect(() => {
     if (!token || !profileId) return
-    (async () => {
-      setMoviesLoading(true)
+
+    // Если фильмов для этого фильтра нет в кэше — показываем загрузку
+    const cached = sessionStorage.getItem(moviesCacheKey(profileId, filter))
+    if (!cached) setMoviesLoading(true)
+
+    ;(async () => {
       try {
         const url = `${API_URL_BACKEND}/users/${profileId}/movies${filter !== 'all' ? `?status=${filter}` : ''}`
         const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
         const d = await r.json()
+        
         setMovies(d.movies || [])
-      } catch { } finally { setMoviesLoading(false) }
+        // Сохраняем в кэш
+        sessionStorage.setItem(moviesCacheKey(profileId, filter), JSON.stringify(d.movies || []))
+      } catch { } finally {
+        setMoviesLoading(false)
+      }
     })()
   }, [token, profileId, filter])
 
@@ -106,6 +154,7 @@ export default function ElysiumProfile() {
 
   const handleFilterChange = (value) => {
     setFilter(value)
+    if (profileId) sessionStorage.setItem(filterKey(profileId), value)
     setPage(1)
     scrollToTop()
     if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
@@ -116,6 +165,30 @@ export default function ElysiumProfile() {
     scrollToTop()
     if (profileId) sessionStorage.setItem(scrollKey(profileId), '0')
   }
+
+  // Обновление статусов при возврате с карточки
+  const fetchSilentUpdates = useCallback(async () => {
+    if (!token || !profileId) return
+    try {
+      const url = `${API_URL_BACKEND}/users/${profileId}/movies${filter !== 'all' ? `?status=${filter}` : ''}`
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      if (r.ok) {
+        const d = await r.json()
+        setMovies(d.movies || [])
+        sessionStorage.setItem(moviesCacheKey(profileId, filter), JSON.stringify(d.movies || []))
+      }
+    } catch { /* тихо игнорируем ошибки фонового обновления */ }
+  }, [token, profileId, filter])
+
+  // Следим за сменой location.key (возврат со страницы фильма)
+  useEffect(() => {
+    // Если данные уже загружены (значит, мы вернулись со страницы), обновляем тихо
+    if (profile && movies.length > 0) {
+      fetchSilentUpdates()
+    }
+  }, [location.key, fetchSilentUpdates])
+
+  // ... (Остальные функции handleShowCommon, handleAddFriend и т.д. остаются без изменений)
 
   const handleShowCommon = async () => {
     if (!isFriend) return
@@ -223,15 +296,15 @@ export default function ElysiumProfile() {
 
       <div className="profile-stats">
         <div className="profile-stat">
-          <span className="profile-stat-value">{stats.watched}</span>
+          <span className="profile-stat-value">{stats?.watched || 0}</span>
           <span className="profile-stat-label">Посмотрел</span>
         </div>
         <div className="profile-stat">
-          <span className="profile-stat-value">{stats.want_to_watch}</span>
+          <span className="profile-stat-value">{stats?.want_to_watch || 0}</span>
           <span className="profile-stat-label">Будет смотреть</span>
         </div>
         <div className="profile-stat">
-          <span className="profile-stat-value">{stats.friends}</span>
+          <span className="profile-stat-value">{stats?.friends || 0}</span>
           <span className="profile-stat-label">Друзей</span>
         </div>
       </div>
@@ -253,7 +326,8 @@ export default function ElysiumProfile() {
           {commonMovies.length === 0 ? (
             <p className="profile-empty">Нет общих фильмов и сериалов</p>
           ) : (
-            <div className="profile-moviesgrid">
+            /* ДОБАВЛЕН КЛАСС profile-common-moviesgrid ДЛЯ ПРОКРУТКИ */
+            <div className="profile-moviesgrid profile-common-moviesgrid">
               {commonMovies.map(m => (
                 <Link key={`${m.kinopoiskId}:${m.type}`} to={getMoviePath(m)} className="profile-moviecard">
                   <img src={m.posterUrlPreview} alt={getMovieName(m)} className="profile-movieposter" />

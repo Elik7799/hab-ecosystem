@@ -1798,6 +1798,37 @@ body {
   border-radius: 16px;
 }
 
+/* Горизонтальный скролл для общих фильмов */
+.profile-common-moviesgrid {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 15px;
+  padding-bottom: 15px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(199, 0, 0, 0.4) transparent;
+}
+
+.profile-common-moviesgrid::-webkit-scrollbar {
+  height: 8px;
+}
+
+.profile-common-moviesgrid::-webkit-scrollbar-track {
+  background: rgba(199, 0, 0, 0.08);
+  border-radius: 4px;
+}
+
+.profile-common-moviesgrid::-webkit-scrollbar-thumb {
+  background: rgba(199, 0, 0, 0.4);
+  border-radius: 4px;
+}
+
+/* Чтобы карточки не сжимались внутри строки */
+.profile-common-moviesgrid .profile-moviecard {
+  flex-shrink: 0;
+}
+
 .profile-movies {
   margin-bottom: 25px;
 }
