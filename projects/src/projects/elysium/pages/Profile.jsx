@@ -249,6 +249,7 @@ export default function ElysiumProfile() {
           <h2 className="profile-heading">
             Общие фильмы и сериалы <span className="profile-count">{commonMovies.length}</span>
           </h2>
+          <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setShowCommon(false)}>Скрыть</button>
           {commonMovies.length === 0 ? (
             <p className="profile-empty">Нет общих фильмов и сериалов</p>
           ) : (
