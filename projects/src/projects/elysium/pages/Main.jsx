@@ -18,12 +18,6 @@ const CATEGORIES = [
   { value: 'TOP_250_MOVIES', label: 'Топ 250 фильмов' },
 ]
 
-const FILTERS = [
-  { value: 'ALL', label: 'Все' },
-  { value: 'FILM', label: 'Фильмы' },
-  { value: 'TV_SERIES', label: 'Сериалы' },
-]
-
 const SESSION_KEY = 'main-session-active'
 const SCROLL_KEY = 'main-scroll-y'
 const isSessionRestore = () => sessionStorage.getItem(SESSION_KEY) === 'true'
@@ -44,10 +38,6 @@ export default function ElysiumMain() {
     isSessionRestore() ? localStorage.getItem('main-query') || '' : ''
   )
   const [movies, setMovies] = useState(readSavedMovies)
-  const [filter, setFilter] = useState(() => {
-    const saved = localStorage.getItem('main-filter')
-    return FILTERS.some(c => c.value === saved) ? saved : 'ALL'
-  })
   const [category, setCategory] = useState(() => {
     const saved = localStorage.getItem('main-category')
     return CATEGORIES.some(c => c.value === saved) ? saved : 'TOP_POPULAR_ALL'
@@ -79,15 +69,14 @@ export default function ElysiumMain() {
     setError('')
     try {
       const res = await fetch(
-        `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}&category=${category}&type=${filter}`,
+        `${API_URL_BACKEND}/kinopoisk/main?page=${pageNum}&limit=${PAGE_SIZE}&category=${category}`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!res.ok) throw new Error('Ошибка')
       const data = await res.json()
-      let items = data.items || []
-      if (category !== 'MARVEL' && filter !== 'ALL') {
-        items = items.filter(m => m.type === filter)
-      }
+      
+      const items = data.items || []
+      
       append ? setMovies(p => [...p, ...items]) : setMovies(items)
       setPage(data.page || pageNum)
       setHasMore(data.hasMore || false)
@@ -100,7 +89,7 @@ export default function ElysiumMain() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [token, category, filter])
+  }, [token, category])
 
   useEffect(() => {
     if (!token || isSearching) return
@@ -113,10 +102,9 @@ export default function ElysiumMain() {
     scrollToTop()
     sessionStorage.removeItem(SCROLL_KEY)
     fetchPopular(1, false)
-  }, [token, category, filter, fetchPopular, isSearching])
+  }, [token, category, fetchPopular, isSearching])
 
   useEffect(() => { localStorage.setItem('main-category', category) }, [category])
-  useEffect(() => { localStorage.setItem('main-filter', filter) }, [filter])
   useEffect(() => { localStorage.setItem('main-query', query) }, [query])
   useEffect(() => { localStorage.setItem('main-is-searching', String(isSearching)) }, [isSearching])
   useEffect(() => { localStorage.setItem('main-movies', JSON.stringify(movies)) }, [movies])
@@ -147,7 +135,9 @@ export default function ElysiumMain() {
   useEffect(() => {
     if (!isSearching) return
     if (!query.trim()) {
-      setIsSearching(false); setFilter('ALL'); fetchPopular(1, false); return
+      setIsSearching(false)
+      fetchPopular(1, false)
+      return
     }
     if (restoredSearchFromStorage.current) { restoredSearchFromStorage.current = false; return }
     const d = setTimeout(() => searchMovies(query), 500)
@@ -155,13 +145,18 @@ export default function ElysiumMain() {
   }, [query, isSearching, searchMovies, fetchPopular])
 
   const handleSearchChange = (e) => { setQuery(e.target.value); setIsSearching(true) }
+  
   const handleClearSearch = () => {
-    setQuery(''); setIsSearching(false); setFilter('ALL'); setCategory('MARVEL')
-    localStorage.removeItem('main-query'); localStorage.removeItem('main-is-searching')
+    setQuery(''); 
+    setIsSearching(false); 
+    setCategory('MARVEL')
+    localStorage.removeItem('main-query'); 
+    localStorage.removeItem('main-is-searching')
     sessionStorage.removeItem(SCROLL_KEY)
     scrollToTop()
     fetchPopular(1, false)
   }
+  
   const handleLoadMore = () => { if (!loadingMore && hasMore) fetchPopular(page + 1, true) }
 
   const categoryName = CATEGORIES.find(c => c.value === category)?.label || 'Киновселенная MARVEL'
@@ -184,24 +179,11 @@ export default function ElysiumMain() {
       </div>
 
       {!isSearching && (
-        <>
-          <div className="main-category-row">
-            <select value={category} onChange={e => setCategory(e.target.value)} className="main-select">
-              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </div>
-          <div className="main-filters">
-            {FILTERS.map(f => (
-              <button
-                key={f.value}
-                className={filter === f.value ? 'main-filterbtn active' : 'main-filterbtn'}
-                onClick={() => setFilter(f.value)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </>
+        <div className="main-category-row">
+          <select value={category} onChange={e => setCategory(e.target.value)} className="main-select">
+            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </div>
       )}
 
       {loading && <MovieGridSkeleton count={20} />}

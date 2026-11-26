@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom' // <-- Добавлен useNavigate
 import { useAuth } from '../context/ElysiumAuthContext'
 import { getMovieName } from '../../../utils/ElysiumMovieName'
 import { MovieDetailSkeleton } from '../components/ElysiumSkeleton'
@@ -29,6 +29,7 @@ function sortByYear(items) {
 export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
   const { id } = useParams()
   const { token } = useAuth()
+  const navigate = useNavigate() // <-- Инициализируем хук навигации
   const isSeries = dbType === 'TV_SERIES'
   const pathType = isSeries ? 'tv' : 'movie'
 
@@ -200,6 +201,64 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
     }
   }
 
+  const handleMarkAllSeries = async () => {
+    // 1. Находим все вышедшие серии
+    const airedEps = episodes.filter(e =>
+      e.release_date ? new Date(e.release_date) <= new Date() : false
+    )
+
+    // 2. Оставляем только те, которые еще не отмечены
+    const unwatchedAiredEps = airedEps.filter(e =>
+      !watchedEpisodes[`${e.season_number}-${e.episode_number}`]
+    )
+
+    if (unwatchedAiredEps.length === 0) return
+
+    // 3. Группируем неотмеченные серии по сезонам (так как бэкенд ждет seasonNumber)
+    const bySeason = {}
+    unwatchedAiredEps.forEach(ep => {
+      if (!bySeason[ep.season_number]) bySeason[ep.season_number] = []
+      bySeason[ep.season_number].push(ep)
+    })
+
+    // 4. Оптимистично обновляем UI (закрашиваем все галочки)
+    setWatchedEpisodes(prev => {
+      const next = { ...prev }
+      airedEps.forEach(ep => {
+        next[`${ep.season_number}-${ep.episode_number}`] = true
+      })
+      return next
+    })
+
+    try {
+      // 5. Отправляем запросы параллельно для всех сезонов, где есть неотмеченные серии
+      const requests = Object.keys(bySeason).map(seasonNum => {
+        return fetch(`${API_URL_BACKEND}/episodes/bulk-toggle`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            movieId: parseInt(id),
+            seasonNumber: parseInt(seasonNum),
+            episodes: bySeason[seasonNum],
+            watched: true,
+          }),
+        })
+      })
+
+      await Promise.all(requests)
+
+      // Если все прошло успешно, бэкенд автоматически пересчитает статус на 'watched',
+      // поэтому просто принудительно ставим его в стейт
+      setStatus('watched')
+    } catch (err) {
+      console.error(err)
+      showError('Не удалось отметить все серии')
+    }
+  }
+
   const handleBulkToggleSeason = async (seasonNum, action) => {
     const seasonEps = episodes.filter(e => e.season_number === seasonNum)
     const aired = seasonEps.filter(e =>
@@ -248,7 +307,13 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
     return (
       <div className="moviedetail-error">
         <p>{error || 'Не найдено'}</p>
-        <Link to="/elysium" className="loginbutton">Вернуться</Link>
+        <button
+          onClick={() => navigate(-1)}
+          className="loginbutton"
+          style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+        >
+          Вернуться
+        </button>
       </div>
     )
   }
@@ -283,6 +348,22 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
 
   return (
     <div className="moviedetail">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="moviedetail-back"
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          marginBottom: '20px',
+          cursor: 'pointer',
+          display: 'inline-block'
+        }}
+      >
+        ← Назад
+      </button>
+
       <div className="moviedetail-top">
         <div className="moviedetail-poster">
           <img
@@ -432,6 +513,26 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
 
       {isSeries && episodes.length > 0 && (
         <div className="moviedetail-seasons">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+            <h2 className="moviedetail-heading" style={{ marginBottom: 0 }}>Сезоны</h2>
+            {(() => {
+              const airedEps = episodes.filter(e => e.release_date ? new Date(e.release_date) <= new Date() : false)
+              const allWatched = airedEps.length > 0 && airedEps.every(e => watchedEpisodes[`${e.season_number}-${e.episode_number}`])
+
+              if (airedEps.length === 0 || allWatched) return null
+
+              return (
+                <button
+                  type="button"
+                  className="season-bulk-btn"
+                  onClick={handleMarkAllSeries}
+                  style={{ fontSize: '14px', padding: '8px 16px' }}
+                >
+                  <Check size={16} /> Отметить весь сериал
+                </button>
+              )
+            })()}
+          </div>
           <h2 className="moviedetail-heading">Сезоны</h2>
           {Array.from(new Set(episodes.map(e => e.season_number))).map(seasonNum => {
             const isExpanded = expandedSeasons[seasonNum]
@@ -521,7 +622,7 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
         </div>
       )}
 
-      <Link to="/elysium" className="moviedetail-back">← Назад</Link>
+      {/* Старая кнопка внизу удалена */}
     </div>
   )
 }

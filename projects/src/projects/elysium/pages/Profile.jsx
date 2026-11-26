@@ -239,7 +239,7 @@ export default function ElysiumProfile() {
       {!isOwn && isFriend && (
         <div className="profile-common-btn">
           <button type="button" className="profile-btn" onClick={handleShowCommon}>
-            Показать общие фильмы
+            Показать общие фильмы и сериалы
           </button>
         </div>
       )}
@@ -247,10 +247,10 @@ export default function ElysiumProfile() {
       {showCommon && (
         <div className="profile-common">
           <h2 className="profile-heading">
-            Общие фильмы <span className="profile-count">{commonMovies.length}</span>
+            Общие фильмы и сериалы <span className="profile-count">{commonMovies.length}</span>
           </h2>
           {commonMovies.length === 0 ? (
-            <p className="profile-empty">Нет общих фильмов</p>
+            <p className="profile-empty">Нет общих фильмов и сериалов</p>
           ) : (
             <div className="profile-moviesgrid">
               {commonMovies.map(m => (
@@ -270,7 +270,7 @@ export default function ElysiumProfile() {
 
       <div className="profile-movies">
         <h2 className="profile-heading">
-          {isOwn ? 'Мои фильмы' : `Фильмы @${profile.name}`}
+          {isOwn ? 'Мои фильмы и сериалы' : `Фильмы и сериалы @${profile.name}`}
           <span className="profile-count">{movies.length}</span>
         </h2>
         <div className="profile-filters">
@@ -288,7 +288,7 @@ export default function ElysiumProfile() {
           <p className="profile-empty">Загрузка...</p>
         ) : movies.length === 0 ? (
           <p className="profile-empty">
-            {isOwn ? 'Нет фильмов' : 'У пользователя нет фильмов'}
+            {isOwn ? 'Нет фильмов и сериалов' : 'У пользователя нет фильмов и сериалов'}
           </p>
         ) : (
           <>
