@@ -54,27 +54,22 @@ export default function ElysiumHeader() {
       </div>
 
       <div className="header-div header-div-desktop">
-        <NavLink
-          to="/elysium"
-          end
-          className={({ isActive }) =>
-            isActive ? 'header-button active' : 'header-button'
-          }
-        >
+        
+        <NavLink to="/elysium" end className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
           <House />
         </NavLink>
 
         {user && (
           <>
-            <NavLink to="/elysium/my-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
+            <NavLink to="/elysium/my-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'} title="Мои сериалы">
               <Tv />
             </NavLink>
 
-            <NavLink to="/elysium/planned-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
+            <NavLink to="/elysium/planned-series" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'} title="Буду смотреть">
               <Bookmark />
             </NavLink>
 
-            <NavLink to="/elysium/my-movies" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'}>
+            <NavLink to="/elysium/my-movies" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'} title="Мои фильмы">
               <Film />
             </NavLink>
 
@@ -82,21 +77,11 @@ export default function ElysiumHeader() {
               <PauseCircle />
             </NavLink>
 
-            <NavLink
-              to="/elysium/friends"
-              className={({ isActive }) =>
-                isActive ? 'header-button active' : 'header-button'
-              }
-            >
+            <NavLink to="/elysium/friends" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'} title="Друзья">
               <Users />
             </NavLink>
 
-            <NavLink
-              to="/elysium/match"
-              className={({ isActive }) =>
-                isActive ? 'header-button active' : 'header-button'
-              }
-            >
+            <NavLink to="/elysium/match" className={({ isActive }) => isActive ? 'header-button active' : 'header-button'} title="Кино-Подбор">
               <Sparkles />
             </NavLink>
 
@@ -223,7 +208,7 @@ export default function ElysiumHeader() {
                 onClick={() => setMenuOpen(false)}
               >
                 <Sparkles size={20} />
-                <span>Подбор</span>
+                <span>Кино-Подбор</span>
               </NavLink>
 
               <NavLink
