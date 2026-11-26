@@ -203,7 +203,7 @@ body {
   border-top: solid var(--dop) 1px;
   box-shadow: 0 2px 12px var(--dop);
   backdrop-filter: blur(10px);
-  padding: 30px 15px 20px 15px;
+  padding: 30px 30px 20px 30px;
 }
 
 .footer-top {
