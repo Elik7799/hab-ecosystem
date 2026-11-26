@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom' // <-- Link уже был, он нужен
 import { useAuth } from '../context/ElysiumAuthContext'
 import { useSocket } from '../context/ElysiumSocketContext'
 import { showSuccess, showError } from '../../../utils/ElysiumToast'
+import { useScrollRestore } from '../../../utils/ElysiumScroll' // <-- Добавлен импорт для скролла
 
 const API_URL_BACKEND = 'https://hab-ecosystem.onrender.com/api'
 
@@ -12,12 +13,39 @@ export default function ElysiumFriends() {
 
   const [friends, setFriends] = useState([])
   const [requests, setRequests] = useState([])
-  const [searchName, setSearchName] = useState('')
-  const [searchResult, setSearchResult] = useState(null)
+  
+  // Инициализируем состояния из sessionStorage, чтобы они не слетали при возврате
+  const [searchName, setSearchName] = useState(() => 
+    sessionStorage.getItem('friends-search-name') || ''
+  )
+  const [searchResult, setSearchResult] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('friends-search-result')
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
+
   const [searchError, setSearchError] = useState('')
   const [searching, setSearching] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Восстанавливаем скролл после загрузки друзей
+  useScrollRestore('friends-scroll-y', !loading)
+
+  // Сохраняем введенный ник в sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('friends-search-name', searchName)
+  }, [searchName])
+
+  // Сохраняем найденный результат в sessionStorage
+  useEffect(() => {
+    if (searchResult) {
+      sessionStorage.setItem('friends-search-result', JSON.stringify(searchResult))
+    } else {
+      sessionStorage.removeItem('friends-search-result')
+    }
+  }, [searchResult])
 
   const loadFriends = useCallback(async () => {
     if (!token) return
@@ -104,6 +132,8 @@ export default function ElysiumFriends() {
       setSearchResult(null)
       setSearchName('')
       setSearchError('')
+      sessionStorage.removeItem('friends-search-name')
+      sessionStorage.removeItem('friends-search-result')
       showSuccess('Заявка отправлена!')
     } catch (err) {
       console.error(err)
@@ -213,7 +243,16 @@ export default function ElysiumFriends() {
         {searchResult && (
           <div className="friends-card">
             <div className="friends-info">
-              <p className="friends-name">@{searchResult.name}</p>
+              {/* ИСПРАВЛЕНИЕ: Обернули имя в Link, чтобы можно было перейти в профиль */}
+              <Link
+                to={`/elysium/profile/${searchResult.id}`}
+                className="friends-name-link"
+              >
+                @{searchResult.name}
+              </Link>
+              {isOnline(searchResult.id) && (
+                <span className="online-dot" title="Онлайн" />
+              )}
             </div>
             <button
               className="friends-action friends-actionprimary"

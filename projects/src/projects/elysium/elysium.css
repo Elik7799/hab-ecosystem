@@ -1009,6 +1009,7 @@ body {
   outline: none;
   flex: 1;
   margin: 0;
+  color: var(--dop);
 }
 
 .friends-searchinput:focus {
