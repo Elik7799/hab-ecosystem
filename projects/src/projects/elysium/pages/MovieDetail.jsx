@@ -533,7 +533,6 @@ export default function ElysiumMovieDetail({ dbType = 'FILM' }) {
               )
             })()}
           </div>
-          <h2 className="moviedetail-heading">Сезоны</h2>
           {Array.from(new Set(episodes.map(e => e.season_number))).map(seasonNum => {
             const isExpanded = expandedSeasons[seasonNum]
             const seasonEps = episodes.filter(e => e.season_number === seasonNum)
